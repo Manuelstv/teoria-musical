@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Reconhecimento de Intervalo — Treino Auditivo</title>
+<style>
+  :root {
+    --bg: #FAFAF9;
+    --panel: #F1F5F9;
+    --border: #E2E8F0;
+    --accent: #2563EB;
+    --green: #16A34A;
+    --amber: #D97706;
+    --red: #DC2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: #1e293b;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 480px;
+    width: 100%;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.2;
+    margin: 0 0 16px;
+  }
+  p.body-text {
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.5;
+    margin: 0 0 16px;
+  }
+  .label {
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.4;
+    color: #475569;
+    margin: 8px 0;
+  }
+  .display {
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.15;
+    margin: 8px 0 16px;
+  }
+  button {
+    min-height: 44px;
+    min-width: 44px;
+    font-family: inherit;
+    font-size: 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    padding: 8px 16px;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+    width: 100%;
+    margin: 32px 0 16px;
+    font-weight: 600;
+  }
+  .btn-secondary {
+    background: white;
+    color: #1e293b;
+    width: 100%;
+    margin: 16px 0;
+  }
+  .leitner-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .leitner-row button {
+    flex: 1;
+  }
+  .btn-red { background: var(--red); color: white; border: none; }
+  .btn-amber { background: var(--amber); color: white; border: none; }
+  .btn-green { background: var(--green); color: white; border: none; }
+  .hidden { display: none; }
+  .error {
+    color: var(--red);
+    font-size: 14px;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+  <main class="panel">
+    <h1>Reconhecimento de Intervalo</h1>
+    <p class="body-text" id="instruction">Ouça a nota de referência, depois o intervalo enquadrado por grau. Depois cante de volta antes de ver a resposta.</p>
+
+    <button class="btn-primary" id="play-btn">Tocar intervalo</button>
+    <p class="error hidden" id="audio-error">Não consegui tocar o som agora. Clique em 'Tocar' de novo para ativar o áudio do navegador.</p>
+
+    <div id="sing-step" class="hidden">
+      <p class="body-text">Cante o intervalo de volta em voz alta antes de conferir.</p>
+      <button class="btn-secondary" id="reveal-btn">Já cantei, ver resposta</button>
+    </div>
+
+    <div id="reveal-step" class="hidden">
+      <p class="label">Grau:</p>
+      <p class="display" id="answer-display"></p>
+      <div class="leitner-row">
+        <button class="btn-red" data-result="ainda-nao-sei">Ainda não sei</button>
+        <button class="btn-amber" data-result="quase-la">Quase lá</button>
+        <button class="btn-green" data-result="ja-sei">Já sei</button>
+      </div>
+      <p class="label" id="box-hint"></p>
+    </div>
+
+    <div style="margin-top:24px; border-top:1px solid var(--border); padding-top:16px;">
+      <p class="label">% de acerto</p>
+      <p class="display" id="accuracy-display">—%</p>
+    </div>
+  </main>
+
+<script type="module">
+  import { createEngine, degreeToMidi, DIFFICULTY_TIERS } from '../../../widgets/lib/ear-trainer.js';
+  import { BOXES, nextBox, accuracy } from '../../../widgets/lib/review.js';
+
+  const TONIC_MIDI = 60; // C4 — centro tonal fixo para esta fatia (D-09: menor implementação viável)
+  const STREAK_TO_ADVANCE = 4; // D-06: sobe de tier após 4 acertos consecutivos
+  const ACCURACY_KEY = 'intervals-accuracy';
+  const TIER_KEY = 'intervals-tier';
+
+  const INTERVAL_NAMES = {
+    1: '2ª menor', 2: '2ª maior', 3: '3ª menor', 4: '3ª maior',
+    5: '4ª justa', 6: 'trítono (4ª aumentada)', 7: '5ª justa',
+    8: '6ª menor', 9: '6ª maior', 10: '7ª menor', 11: '7ª maior', 12: 'oitava justa',
+  };
+
+  const engine = createEngine();
+
+  function loadAccuracyState() {
+    try {
+      const raw = localStorage.getItem(ACCURACY_KEY);
+      if (!raw) return { correct: 0, attempts: 0 };
+      const parsed = JSON.parse(raw);
+      return { correct: parsed.correct ?? 0, attempts: parsed.attempts ?? 0 };
+    } catch {
+      return { correct: 0, attempts: 0 };
+    }
+  }
+
+  function saveAccuracyState(state) {
+    localStorage.setItem(ACCURACY_KEY, JSON.stringify(state));
+  }
+
+  function loadTierState() {
+    try {
+      const raw = localStorage.getItem(TIER_KEY);
+      if (!raw) return { tierIndex: 0, streak: 0 };
+      const parsed = JSON.parse(raw);
+      return { tierIndex: parsed.tierIndex ?? 0, streak: parsed.streak ?? 0 };
+    } catch {
+      return { tierIndex: 0, streak: 0 };
+    }
+  }
+
+  function saveTierState(state) {
+    localStorage.setItem(TIER_KEY, JSON.stringify(state));
+  }
+
+  let accuracyState = loadAccuracyState();
+  let tierState = loadTierState();
+  let currentSemitones = null;
+  let boxIndex = 0; // referência informativa — mover o arquivo em review/ continua manual (ver review/README.md)
+
+  const playBtn = document.getElementById('play-btn');
+  const audioError = document.getElementById('audio-error');
+  const singStep = document.getElementById('sing-step');
+  const revealStep = document.getElementById('reveal-step');
+  const revealBtn = document.getElementById('reveal-btn');
+  const answerDisplay = document.getElementById('answer-display');
+  const accuracyDisplay = document.getElementById('accuracy-display');
+  const boxHint = document.getElementById('box-hint');
+
+  function renderAccuracy() {
+    const pct = Math.round(accuracy(accuracyState.correct, accuracyState.attempts) * 100);
+    accuracyDisplay.textContent = accuracyState.attempts === 0 ? '—%' : `${pct}%`;
+  }
+
+  function renderBoxHint() {
+    boxHint.textContent = `Isso te levaria para: ${BOXES[boxIndex]} (mover manualmente em review/, ver review/README.md)`;
+  }
+
+  function pickSemitones() {
+    const tier = DIFFICULTY_TIERS[tierState.tierIndex] ?? DIFFICULTY_TIERS[DIFFICULTY_TIERS.length - 1];
+    return tier[Math.floor(Math.random() * tier.length)];
+  }
+
+  function resetToWaiting() {
+    singStep.classList.add('hidden');
+    revealStep.classList.add('hidden');
+    audioError.classList.add('hidden');
+  }
+
+  playBtn.addEventListener('click', async () => {
+    try {
+      resetToWaiting();
+      engine.resume();
+      currentSemitones = pickSemitones();
+      engine.playInterval(TONIC_MIDI, currentSemitones);
+      singStep.classList.remove('hidden');
+    } catch (err) {
+      audioError.classList.remove('hidden');
+    }
+  });
+
+  revealBtn.addEventListener('click', () => {
+    const name = INTERVAL_NAMES[currentSemitones] ?? `${currentSemitones} semitons`;
+    answerDisplay.textContent = `${name} acima da tônica`;
+    revealStep.classList.remove('hidden');
+  });
+
+  document.querySelectorAll('.leitner-row button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const result = btn.dataset.result;
+      accuracyState.attempts += 1;
+
+      if (result === 'ja-sei') {
+        accuracyState.correct += 1;
+        boxIndex = nextBox(boxIndex, 'forward');
+        tierState.streak += 1;
+        if (tierState.streak >= STREAK_TO_ADVANCE && tierState.tierIndex < DIFFICULTY_TIERS.length - 1) {
+          tierState.tierIndex += 1;
+          tierState.streak = 0;
+        }
+      } else if (result === 'ainda-nao-sei') {
+        boxIndex = nextBox(boxIndex, 'back');
+        tierState.streak = 0;
+      } else {
+        // 'quase-la': não conta como acerto pleno nem regride de caixa — mantém posição atual
+        tierState.streak = 0;
+      }
+
+      saveAccuracyState(accuracyState);
+      saveTierState(tierState);
+      renderAccuracy();
+      renderBoxHint();
+
+      singStep.classList.add('hidden');
+      revealStep.classList.add('hidden');
+    });
+  });
+
+  renderAccuracy();
+</script>
+</body>
+</html>
