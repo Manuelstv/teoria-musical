@@ -113,6 +113,7 @@
 
     <div id="guess-step" class="hidden">
       <p class="label">Qual intervalo você ouviu?</p>
+      <button class="btn-secondary" id="repeat-btn">Repetir</button>
       <div class="guess-row" id="guess-row"></div>
     </div>
 
@@ -189,6 +190,7 @@
   const audioError = document.getElementById('audio-error');
   const guessStep = document.getElementById('guess-step');
   const guessRow = document.getElementById('guess-row');
+  const repeatBtn = document.getElementById('repeat-btn');
   const feedbackStep = document.getElementById('feedback-step');
   const feedbackDisplay = document.getElementById('feedback-display');
   const accuracyDisplay = document.getElementById('accuracy-display');
@@ -266,6 +268,16 @@
     playBtn.disabled = false;
     playBtn.textContent = 'Tocar intervalo';
   }
+
+  // Feature (pedido do usuário no checkpoint 01-02): reouvir o intervalo da
+  // rodada atual quantas vezes quiser enquanto ela estiver em aberto — não
+  // sorteia um intervalo novo, não mexe em accuracy/box/tier, não reabilita
+  // o playBtn principal. Fica dentro de #guess-step, então some/aparece junto
+  // com os botões de resposta.
+  repeatBtn.addEventListener('click', () => {
+    if (currentSemitones === null) return;
+    engine.playInterval(TONIC_MIDI, currentSemitones);
+  });
 
   playBtn.addEventListener('click', async () => {
     try {
