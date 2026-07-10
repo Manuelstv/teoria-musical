@@ -66,7 +66,7 @@
       return ctx;
     }
 
-    function playTone(freq, durationMs, when = 0, gain = 0.2) {
+    function playTone(freq, durationMs, when = 0, gain = 0.45) {
       const ctx = getContext();
       const startTime = ctx.currentTime + when;
       const durationSec = durationMs / 1000;
@@ -96,7 +96,7 @@
     function playTonalReference(tonicMidi) {
       const ctx = getContext();
       const freq = midiToFreq(tonicMidi);
-      return playTone(freq, 700, 0, 0.2) - ctx.currentTime;
+      return playTone(freq, 700, 0, 0.45) - ctx.currentTime;
     }
 
     function playInterval(tonicMidi, semitones) {
