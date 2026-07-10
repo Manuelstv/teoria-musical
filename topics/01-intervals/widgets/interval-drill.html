@@ -118,6 +118,11 @@
     <select class="btn-secondary" id="tier-select" style="margin: 0 0 8px;"></select>
     <p class="tier-advance-msg hidden" id="tier-advance-msg"></p>
 
+    <label class="label" for="volume-slider" style="display:flex; justify-content:space-between;">
+      <span>Volume</span><span id="volume-display"></span>
+    </label>
+    <input type="range" id="volume-slider" min="0" max="100" step="1" style="width:100%; min-height:44px;">
+
     <button class="btn-primary" id="play-btn">Tocar intervalo</button>
     <p class="error hidden" id="audio-error">Não consegui tocar o som agora. Clique em 'Tocar' de novo para ativar o áudio do navegador.</p>
 
@@ -152,6 +157,14 @@
   const STREAK_TO_ADVANCE = 4; // D-06: sobe de tier após 4 acertos consecutivos
   const ACCURACY_KEY = 'intervals-accuracy';
   const TIER_KEY = 'intervals-tier';
+  const VOLUME_KEY = 'intervals-volume';
+  // Terceiro report de "tá baixo" após 3 rodadas de ajuste de gain fixo (0.2 -> 0.45
+  // -> 0.8) — em vez de continuar chutando um número fixo no engine, expõe controle
+  // direto pro usuário. Escala 0-100 no slider (mais intuitivo que 0-1), convertido
+  // pra gain 0-1 na hora de chamar o engine. Default 95 casa com o novo teto de gain
+  // do engine (ear-trainer.js: 0.95) — ou seja, o slider começa onde o "fix definitivo"
+  // do volume padrão ficou, e o usuário só desce se achar alto, ou mantém no talo.
+  const DEFAULT_VOLUME = 95;
 
   const INTERVAL_NAMES = {
     1: '2ª menor', 2: '2ª maior', 3: '3ª menor', 4: '3ª maior',
@@ -191,6 +204,20 @@
     localStorage.setItem(TIER_KEY, JSON.stringify(state));
   }
 
+  function loadVolume() {
+    const raw = localStorage.getItem(VOLUME_KEY);
+    const parsed = raw === null ? NaN : Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : DEFAULT_VOLUME;
+  }
+
+  function saveVolume(value) {
+    localStorage.setItem(VOLUME_KEY, String(value));
+  }
+
+  function currentGain() {
+    return Number(volumeSlider.value) / 100;
+  }
+
   let accuracyState = loadAccuracyState();
   let tierState = loadTierState();
   let currentSemitones = null;
@@ -207,7 +234,20 @@
   const accuracyDisplay = document.getElementById('accuracy-display');
   const boxHint = document.getElementById('box-hint');
   const tierAdvanceMsg = document.getElementById('tier-advance-msg');
+  const volumeSlider = document.getElementById('volume-slider');
+  const volumeDisplay = document.getElementById('volume-display');
   let tierAdvanceMsgTimer = null;
+
+  function renderVolumeDisplay() {
+    volumeDisplay.textContent = `${volumeSlider.value}%`;
+  }
+
+  volumeSlider.value = String(loadVolume());
+  renderVolumeDisplay();
+  volumeSlider.addEventListener('input', () => {
+    saveVolume(Number(volumeSlider.value));
+    renderVolumeDisplay();
+  });
 
   function renderAccuracy() {
     const pct = Math.round(accuracy(accuracyState.correct, accuracyState.attempts) * 100);
@@ -336,7 +376,7 @@
   // com os botões de resposta.
   repeatBtn.addEventListener('click', () => {
     if (currentSemitones === null) return;
-    engine.playInterval(TONIC_MIDI, currentSemitones);
+    engine.playInterval(TONIC_MIDI, currentSemitones, currentGain());
   });
 
   playBtn.addEventListener('click', async () => {
@@ -344,7 +384,7 @@
       resetToWaiting();
       engine.resume();
       currentSemitones = pickSemitones();
-      engine.playInterval(TONIC_MIDI, currentSemitones);
+      engine.playInterval(TONIC_MIDI, currentSemitones, currentGain());
       buildGuessButtons();
       guessStep.classList.remove('hidden');
       // Trava o botão enquanto a rodada aguarda resposta — clicar de novo aqui

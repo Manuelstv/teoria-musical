@@ -66,19 +66,29 @@
       return ctx;
     }
 
-    // Uso real em prática (bug report pós-01-02): 0.45 ainda soava baixo. Envelope
-    // já sustenta praticamente no pico (attack de 10ms, sustain constante em `gain`,
-    // só decai nos últimos 50ms) — não é o formato do envelope que abafa o som, é o
-    // teto de gain. Sem risco de clipping aqui: oscilador senoidal único, sem overlap
-    // entre notas (release termina antes do próximo `noteGap`), então há espaço pra
-    // subir bem acima de 0.45 sem distorcer.
-    function playTone(freq, durationMs, when = 0, gain = 0.8) {
+    // Terceiro report de volume baixo (0.2 -> 0.45 -> 0.8, todos insuficientes):
+    // subir só o número de novo não ataca a causa real. Investigação:
+    // 1) Envelope já sustenta no pico (attack 10ms, sustain constante, só decai nos
+    //    últimos 50ms) — não é o formato do envelope.
+    // 2) Duração das notas (600-700ms) já está acima do limiar de ~300-400ms em que
+    //    o ouvido registra "sustentado"; alongar mais não muda percepção de volume.
+    // 3) A causa real: onda senoidal pura não tem harmônicos (só a fundamental) — o
+    //    ouvido humano percebe timbres com mais conteúdo harmônico como
+    //    significativamente mais "cheios"/altos, mesmo em amplitude de pico igual
+    //    (efeito psicoacústico bem documentado, curvas de loudness equal não são
+    //    lineares em amplitude simples). Onda triangular tem harmônicos ímpares com
+    //    queda 1/n² — soma energia perceptível sem soar áspera (ao contrário de
+    //    square/sawtooth), permitida no CLAUDE.md do projeto.
+    // Fix combinado: triangle em vez de sine (ataca a causa raiz) + teto de gain
+    // subido para 0.95 (headroom real, pico continua < 1.0, sem overlap entre notas
+    // -> sem risco de clipping).
+    function playTone(freq, durationMs, when = 0, gain = 0.95) {
       const ctx = getContext();
       const startTime = ctx.currentTime + when;
       const durationSec = durationMs / 1000;
 
       const oscillator = ctx.createOscillator();
-      oscillator.type = 'sine';
+      oscillator.type = 'triangle';
       oscillator.frequency.setValueAtTime(freq, startTime);
 
       const gainNode = ctx.createGain();
@@ -99,23 +109,26 @@
       return startTime + durationSec;
     }
 
-    function playTonalReference(tonicMidi) {
+    // `gain` exposto no nível de playTonalReference/playInterval (não só playTone)
+    // pra permitir controle de volume pelo usuário (slider no widget) em vez de
+    // depender só do default fixo do engine — ver interval-drill.html #volume-slider.
+    function playTonalReference(tonicMidi, gain = 0.95) {
       const ctx = getContext();
       const freq = midiToFreq(tonicMidi);
-      return playTone(freq, 700, 0, 0.8) - ctx.currentTime;
+      return playTone(freq, 700, 0, gain) - ctx.currentTime;
     }
 
-    function playInterval(tonicMidi, semitones) {
-      const referenceDurationSec = playTonalReference(tonicMidi);
+    function playInterval(tonicMidi, semitones, gain = 0.95) {
+      const referenceDurationSec = playTonalReference(tonicMidi, gain);
       const gapAfterReference = 0.15;
       const noteDurationMs = 600;
       const noteGap = 0.1;
 
       const firstNoteWhen = referenceDurationSec + gapAfterReference;
-      playTone(midiToFreq(tonicMidi), noteDurationMs, firstNoteWhen);
+      playTone(midiToFreq(tonicMidi), noteDurationMs, firstNoteWhen, gain);
 
       const secondNoteWhen = firstNoteWhen + noteDurationMs / 1000 + noteGap;
-      playTone(midiToFreq(degreeToMidi(tonicMidi, semitones)), noteDurationMs, secondNoteWhen);
+      playTone(midiToFreq(degreeToMidi(tonicMidi, semitones)), noteDurationMs, secondNoteWhen, gain);
     }
 
     function playClick(when = 0, accent = false) {
