@@ -129,9 +129,15 @@
     </div>
   </main>
 
-<script type="module">
-  import { createEngine, degreeToMidi, DIFFICULTY_TIERS } from '../../../widgets/lib/ear-trainer.js';
-  import { BOXES, nextBox, accuracy } from '../../../widgets/lib/review.js';
+<script src="../../../widgets/lib/ear-trainer.js"></script>
+<script src="../../../widgets/lib/review.js"></script>
+<script>
+  // Carregado via <script src> clássico (script de módulo ES falha em silêncio ao
+  // importar outro arquivo quando a página é aberta por duplo-clique — protocolo
+  // file:// — no Chrome/Edge, derrubando o script inteiro). Ver comentário em
+  // widgets/lib/ear-trainer.js.
+  const { createEngine, DIFFICULTY_TIERS } = EarTrainer;
+  const { BOXES, nextBox, accuracy } = ReviewLeitner;
 
   const TONIC_MIDI = 60; // C4 — centro tonal fixo para esta fatia (D-09: menor implementação viável)
   const STREAK_TO_ADVANCE = 4; // D-06: sobe de tier após 4 acertos consecutivos

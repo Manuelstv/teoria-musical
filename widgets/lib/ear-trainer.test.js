@@ -1,6 +1,6 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { midiToFreq, degreeToMidi, DIFFICULTY_TIERS } from './ear-trainer.js';
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { midiToFreq, degreeToMidi, DIFFICULTY_TIERS } = require('./ear-trainer.js');
 
 test('midiToFreq(69) === 440', () => {
   assert.equal(midiToFreq(69), 440);

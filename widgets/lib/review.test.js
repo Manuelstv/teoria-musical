@@ -1,6 +1,6 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
-import { BOXES, nextBox, accuracy } from './review.js';
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { BOXES, nextBox, accuracy } = require('./review.js');
 
 test('BOXES has 3 levels with exact names (D-01)', () => {
   assert.equal(BOXES.length, 3);
