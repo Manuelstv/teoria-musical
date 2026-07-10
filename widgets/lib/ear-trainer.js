@@ -66,7 +66,13 @@
       return ctx;
     }
 
-    function playTone(freq, durationMs, when = 0, gain = 0.45) {
+    // Uso real em prática (bug report pós-01-02): 0.45 ainda soava baixo. Envelope
+    // já sustenta praticamente no pico (attack de 10ms, sustain constante em `gain`,
+    // só decai nos últimos 50ms) — não é o formato do envelope que abafa o som, é o
+    // teto de gain. Sem risco de clipping aqui: oscilador senoidal único, sem overlap
+    // entre notas (release termina antes do próximo `noteGap`), então há espaço pra
+    // subir bem acima de 0.45 sem distorcer.
+    function playTone(freq, durationMs, when = 0, gain = 0.8) {
       const ctx = getContext();
       const startTime = ctx.currentTime + when;
       const durationSec = durationMs / 1000;
@@ -96,7 +102,7 @@
     function playTonalReference(tonicMidi) {
       const ctx = getContext();
       const freq = midiToFreq(tonicMidi);
-      return playTone(freq, 700, 0, 0.45) - ctx.currentTime;
+      return playTone(freq, 700, 0, 0.8) - ctx.currentTime;
     }
 
     function playInterval(tonicMidi, semitones) {
