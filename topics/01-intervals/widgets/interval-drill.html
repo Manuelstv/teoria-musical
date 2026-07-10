@@ -101,6 +101,12 @@
   }
   .feedback-correct { color: var(--green); }
   .feedback-incorrect { color: var(--red); }
+  .tier-advance-msg {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 14px;
+    margin: -8px 0 16px;
+  }
 </style>
 </head>
 <body>
@@ -109,7 +115,8 @@
     <p class="body-text" id="instruction">Ouça a nota de referência, depois o intervalo enquadrado por grau. Depois escolha qual intervalo você ouviu — a resposta certa aparece na hora.</p>
 
     <label class="label" for="tier-select" style="display:block;">Dificuldade</label>
-    <select class="btn-secondary" id="tier-select" style="margin: 0 0 16px;"></select>
+    <select class="btn-secondary" id="tier-select" style="margin: 0 0 8px;"></select>
+    <p class="tier-advance-msg hidden" id="tier-advance-msg"></p>
 
     <button class="btn-primary" id="play-btn">Tocar intervalo</button>
     <p class="error hidden" id="audio-error">Não consegui tocar o som agora. Clique em 'Tocar' de novo para ativar o áudio do navegador.</p>
@@ -199,6 +206,8 @@
   const feedbackDisplay = document.getElementById('feedback-display');
   const accuracyDisplay = document.getElementById('accuracy-display');
   const boxHint = document.getElementById('box-hint');
+  const tierAdvanceMsg = document.getElementById('tier-advance-msg');
+  let tierAdvanceMsgTimer = null;
 
   function renderAccuracy() {
     const pct = Math.round(accuracy(accuracyState.correct, accuracyState.attempts) * 100);
@@ -227,10 +236,27 @@
     tierSelect.value = String(tierState.tierIndex);
   }
 
+  // Fix (bug report pós-01-02, uso real): "muda a dificuldade sem eu ter selecionado".
+  // Investigação não achou bug — `tierSelect.value = ...` não dispara `change` (é
+  // comportamento padrão do DOM), `tierState` é fonte única em memória (sem re-leitura
+  // do localStorage por clique, sem race), e a condição de streak está correta. O que
+  // realmente acontecia: o avanço automático de tier (D-06) é silencioso — o seletor
+  // muda de valor sem nenhum aviso, parecendo um bug pro usuário. Corrige avisando.
+  function announceTierAdvance(newTierIndex) {
+    clearTimeout(tierAdvanceMsgTimer);
+    tierAdvanceMsg.textContent = `Nível subiu para ${newTierIndex + 1}! (${STREAK_TO_ADVANCE} acertos seguidos)`;
+    tierAdvanceMsg.classList.remove('hidden');
+    tierAdvanceMsgTimer = setTimeout(() => {
+      tierAdvanceMsg.classList.add('hidden');
+    }, 5000);
+  }
+
   tierSelect.addEventListener('change', () => {
     tierState.tierIndex = Number(tierSelect.value);
     tierState.streak = 0;
     saveTierState(tierState);
+    clearTimeout(tierAdvanceMsgTimer);
+    tierAdvanceMsg.classList.add('hidden');
   });
 
   function pickSemitones() {
@@ -274,6 +300,7 @@
         tierState.tierIndex += 1;
         tierState.streak = 0;
         renderTierSelect(); // mantém o seletor em sincronia com o avanço automático
+        announceTierAdvance(tierState.tierIndex); // avisa: antes o avanço era silencioso
       }
       feedbackDisplay.textContent = 'Certo!';
       feedbackDisplay.className = 'display feedback-correct';
