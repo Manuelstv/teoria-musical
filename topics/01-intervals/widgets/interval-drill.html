@@ -80,46 +80,40 @@
     width: 100%;
     margin: 16px 0;
   }
-  .leitner-row {
+  .guess-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 16px;
   }
-  .leitner-row button {
-    flex: 1;
+  .guess-row button {
+    flex: 1 1 100px;
   }
-  .btn-red { background: var(--red); color: white; border: none; }
-  .btn-amber { background: var(--amber); color: white; border: none; }
-  .btn-green { background: var(--green); color: white; border: none; }
   .hidden { display: none; }
   .error {
     color: var(--red);
     font-size: 14px;
     margin-top: 8px;
   }
+  .feedback-correct { color: var(--green); }
+  .feedback-incorrect { color: var(--red); }
 </style>
 </head>
 <body>
   <main class="panel">
     <h1>Reconhecimento de Intervalo</h1>
-    <p class="body-text" id="instruction">Ouça a nota de referência, depois o intervalo enquadrado por grau. Depois cante de volta antes de ver a resposta.</p>
+    <p class="body-text" id="instruction">Ouça a nota de referência, depois o intervalo enquadrado por grau. Depois escolha qual intervalo você ouviu — a resposta certa aparece na hora.</p>
 
     <button class="btn-primary" id="play-btn">Tocar intervalo</button>
     <p class="error hidden" id="audio-error">Não consegui tocar o som agora. Clique em 'Tocar' de novo para ativar o áudio do navegador.</p>
 
-    <div id="sing-step" class="hidden">
-      <p class="body-text">Cante o intervalo de volta em voz alta antes de conferir.</p>
-      <button class="btn-secondary" id="reveal-btn">Já cantei, ver resposta</button>
+    <div id="guess-step" class="hidden">
+      <p class="label">Qual intervalo você ouviu?</p>
+      <div class="guess-row" id="guess-row"></div>
     </div>
 
-    <div id="reveal-step" class="hidden">
-      <p class="label">Grau:</p>
-      <p class="display" id="answer-display"></p>
-      <div class="leitner-row">
-        <button class="btn-red" data-result="ainda-nao-sei">Ainda não sei</button>
-        <button class="btn-amber" data-result="quase-la">Quase lá</button>
-        <button class="btn-green" data-result="ja-sei">Já sei</button>
-      </div>
+    <div id="feedback-step" class="hidden">
+      <p class="display" id="feedback-display"></p>
       <p class="label" id="box-hint"></p>
     </div>
 
@@ -189,10 +183,10 @@
 
   const playBtn = document.getElementById('play-btn');
   const audioError = document.getElementById('audio-error');
-  const singStep = document.getElementById('sing-step');
-  const revealStep = document.getElementById('reveal-step');
-  const revealBtn = document.getElementById('reveal-btn');
-  const answerDisplay = document.getElementById('answer-display');
+  const guessStep = document.getElementById('guess-step');
+  const guessRow = document.getElementById('guess-row');
+  const feedbackStep = document.getElementById('feedback-step');
+  const feedbackDisplay = document.getElementById('feedback-display');
   const accuracyDisplay = document.getElementById('accuracy-display');
   const boxHint = document.getElementById('box-hint');
 
@@ -211,9 +205,57 @@
   }
 
   function resetToWaiting() {
-    singStep.classList.add('hidden');
-    revealStep.classList.add('hidden');
+    guessStep.classList.add('hidden');
+    feedbackStep.classList.add('hidden');
     audioError.classList.add('hidden');
+  }
+
+  // Multiple-choice em vez de canto: um botão por intervalo do tier atual (deviation
+  // do checkpoint 01-02 — ver 01-CONTEXT.md D-10). Ordem ascendente de semitons.
+  function buildGuessButtons() {
+    guessRow.innerHTML = '';
+    const tier = DIFFICULTY_TIERS[tierState.tierIndex] ?? DIFFICULTY_TIERS[DIFFICULTY_TIERS.length - 1];
+    const options = [...tier].sort((a, b) => a - b);
+    options.forEach((semitones) => {
+      const btn = document.createElement('button');
+      btn.className = 'btn-secondary';
+      btn.textContent = INTERVAL_NAMES[semitones] ?? `${semitones} semitons`;
+      btn.dataset.semitones = String(semitones);
+      btn.addEventListener('click', () => handleGuess(semitones));
+      guessRow.appendChild(btn);
+    });
+  }
+
+  function handleGuess(guessedSemitones) {
+    const correct = guessedSemitones === currentSemitones;
+    const correctName = INTERVAL_NAMES[currentSemitones] ?? `${currentSemitones} semitons`;
+
+    accuracyState.attempts += 1;
+
+    if (correct) {
+      accuracyState.correct += 1;
+      boxIndex = nextBox(boxIndex, 'forward');
+      tierState.streak += 1;
+      if (tierState.streak >= STREAK_TO_ADVANCE && tierState.tierIndex < DIFFICULTY_TIERS.length - 1) {
+        tierState.tierIndex += 1;
+        tierState.streak = 0;
+      }
+      feedbackDisplay.textContent = 'Certo!';
+      feedbackDisplay.className = 'display feedback-correct';
+    } else {
+      boxIndex = nextBox(boxIndex, 'back');
+      tierState.streak = 0;
+      feedbackDisplay.textContent = `Errado — era ${correctName}`;
+      feedbackDisplay.className = 'display feedback-incorrect';
+    }
+
+    saveAccuracyState(accuracyState);
+    saveTierState(tierState);
+    renderAccuracy();
+    renderBoxHint();
+
+    guessStep.classList.add('hidden');
+    feedbackStep.classList.remove('hidden');
   }
 
   playBtn.addEventListener('click', async () => {
@@ -222,47 +264,11 @@
       engine.resume();
       currentSemitones = pickSemitones();
       engine.playInterval(TONIC_MIDI, currentSemitones);
-      singStep.classList.remove('hidden');
+      buildGuessButtons();
+      guessStep.classList.remove('hidden');
     } catch (err) {
       audioError.classList.remove('hidden');
     }
-  });
-
-  revealBtn.addEventListener('click', () => {
-    const name = INTERVAL_NAMES[currentSemitones] ?? `${currentSemitones} semitons`;
-    answerDisplay.textContent = `${name} acima da tônica`;
-    revealStep.classList.remove('hidden');
-  });
-
-  document.querySelectorAll('.leitner-row button').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const result = btn.dataset.result;
-      accuracyState.attempts += 1;
-
-      if (result === 'ja-sei') {
-        accuracyState.correct += 1;
-        boxIndex = nextBox(boxIndex, 'forward');
-        tierState.streak += 1;
-        if (tierState.streak >= STREAK_TO_ADVANCE && tierState.tierIndex < DIFFICULTY_TIERS.length - 1) {
-          tierState.tierIndex += 1;
-          tierState.streak = 0;
-        }
-      } else if (result === 'ainda-nao-sei') {
-        boxIndex = nextBox(boxIndex, 'back');
-        tierState.streak = 0;
-      } else {
-        // 'quase-la': não conta como acerto pleno nem regride de caixa — mantém posição atual
-        tierState.streak = 0;
-      }
-
-      saveAccuracyState(accuracyState);
-      saveTierState(tierState);
-      renderAccuracy();
-      renderBoxHint();
-
-      singStep.classList.add('hidden');
-      revealStep.classList.add('hidden');
-    });
   });
 
   renderAccuracy();
