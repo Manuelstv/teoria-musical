@@ -66,6 +66,10 @@
     cursor: pointer;
     padding: 8px 16px;
   }
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
   .btn-primary {
     background: var(--accent);
     color: white;
@@ -256,6 +260,11 @@
 
     guessStep.classList.add('hidden');
     feedbackStep.classList.remove('hidden');
+
+    // Fix (bug report Task 3): só libera tocar um novo intervalo depois que o
+    // usuário respondeu — reabilita o botão aqui, não no clique do play.
+    playBtn.disabled = false;
+    playBtn.textContent = 'Tocar intervalo';
   }
 
   playBtn.addEventListener('click', async () => {
@@ -266,6 +275,10 @@
       engine.playInterval(TONIC_MIDI, currentSemitones);
       buildGuessButtons();
       guessStep.classList.remove('hidden');
+      // Trava o botão enquanto a rodada aguarda resposta — clicar de novo aqui
+      // pulava a rodada atual e tocava um intervalo novo sem o usuário responder.
+      playBtn.disabled = true;
+      playBtn.textContent = 'Aguardando resposta...';
     } catch (err) {
       audioError.classList.remove('hidden');
     }
