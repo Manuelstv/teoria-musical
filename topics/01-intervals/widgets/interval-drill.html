@@ -56,7 +56,7 @@
     line-height: 1.15;
     margin: 8px 0 16px;
   }
-  button {
+  button, select {
     min-height: 44px;
     min-width: 44px;
     font-family: inherit;
@@ -66,7 +66,7 @@
     cursor: pointer;
     padding: 8px 16px;
   }
-  button:disabled {
+  button:disabled, select:disabled {
     cursor: not-allowed;
     opacity: 0.6;
   }
@@ -107,6 +107,9 @@
   <main class="panel">
     <h1>Reconhecimento de Intervalo</h1>
     <p class="body-text" id="instruction">Ouça a nota de referência, depois o intervalo enquadrado por grau. Depois escolha qual intervalo você ouviu — a resposta certa aparece na hora.</p>
+
+    <label class="label" for="tier-select" style="display:block;">Dificuldade</label>
+    <select class="btn-secondary" id="tier-select" style="margin: 0 0 16px;"></select>
 
     <button class="btn-primary" id="play-btn">Tocar intervalo</button>
     <p class="error hidden" id="audio-error">Não consegui tocar o som agora. Clique em 'Tocar' de novo para ativar o áudio do navegador.</p>
@@ -187,6 +190,7 @@
   let boxIndex = 0; // referência informativa — mover o arquivo em review/ continua manual (ver review/README.md)
 
   const playBtn = document.getElementById('play-btn');
+  const tierSelect = document.getElementById('tier-select');
   const audioError = document.getElementById('audio-error');
   const guessStep = document.getElementById('guess-step');
   const guessRow = document.getElementById('guess-row');
@@ -204,6 +208,30 @@
   function renderBoxHint() {
     boxHint.textContent = `Isso te levaria para: ${BOXES[boxIndex]} (mover manualmente em review/, ver review/README.md)`;
   }
+
+  // Feature (pedido do usuário no checkpoint 01-02): permite escolher manualmente
+  // o tier de dificuldade em vez de depender só da progressão automática por streak.
+  // Populado uma vez a partir de DIFFICULTY_TIERS; o valor selecionado é sincronizado
+  // sempre que o tier muda (seleção manual ou avanço automático).
+  function buildTierOptions() {
+    tierSelect.innerHTML = '';
+    DIFFICULTY_TIERS.forEach((tier, index) => {
+      const opt = document.createElement('option');
+      opt.value = String(index);
+      opt.textContent = `Nível ${index + 1} (${tier.length} intervalos)`;
+      tierSelect.appendChild(opt);
+    });
+  }
+
+  function renderTierSelect() {
+    tierSelect.value = String(tierState.tierIndex);
+  }
+
+  tierSelect.addEventListener('change', () => {
+    tierState.tierIndex = Number(tierSelect.value);
+    tierState.streak = 0;
+    saveTierState(tierState);
+  });
 
   function pickSemitones() {
     const tier = DIFFICULTY_TIERS[tierState.tierIndex] ?? DIFFICULTY_TIERS[DIFFICULTY_TIERS.length - 1];
@@ -245,6 +273,7 @@
       if (tierState.streak >= STREAK_TO_ADVANCE && tierState.tierIndex < DIFFICULTY_TIERS.length - 1) {
         tierState.tierIndex += 1;
         tierState.streak = 0;
+        renderTierSelect(); // mantém o seletor em sincronia com o avanço automático
       }
       feedbackDisplay.textContent = 'Certo!';
       feedbackDisplay.className = 'display feedback-correct';
@@ -267,6 +296,10 @@
     // usuário respondeu — reabilita o botão aqui, não no clique do play.
     playBtn.disabled = false;
     playBtn.textContent = 'Tocar intervalo';
+    // Feature (seletor de dificuldade): reabilita a troca de tier só depois que
+    // a rodada é resolvida — mesma lógica do playBtn, pra não trocar de nível
+    // no meio de uma rodada em aberto.
+    tierSelect.disabled = false;
   }
 
   // Feature (pedido do usuário no checkpoint 01-02): reouvir o intervalo da
@@ -291,11 +324,16 @@
       // pulava a rodada atual e tocava um intervalo novo sem o usuário responder.
       playBtn.disabled = true;
       playBtn.textContent = 'Aguardando resposta...';
+      // Trava o seletor de dificuldade também — não pode trocar de tier com
+      // a rodada em aberto (mesma regra do playBtn).
+      tierSelect.disabled = true;
     } catch (err) {
       audioError.classList.remove('hidden');
     }
   });
 
+  buildTierOptions();
+  renderTierSelect();
   renderAccuracy();
 </script>
 </body>
