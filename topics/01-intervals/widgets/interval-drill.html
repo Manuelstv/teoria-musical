@@ -142,11 +142,7 @@
       <div class="stats-row">
         <div>
           <p class="label">Sessão</p>
-          <p class="display" id="session-accuracy-display">—%</p>
-        </div>
-        <div>
-          <p class="label">Total</p>
-          <p class="display" id="accuracy-display">—%</p>
+          <p class="display" id="session-accuracy-display">0/0</p>
         </div>
       </div>
     </div>
@@ -160,10 +156,9 @@
   // file:// — no Chrome/Edge, derrubando o script inteiro). Ver comentário em
   // widgets/lib/ear-trainer.js.
   const { createEngine, DIFFICULTY_TIERS } = EarTrainer;
-  const { BOXES, nextBox, accuracy } = ReviewLeitner;
+  const { BOXES, nextBox } = ReviewLeitner;
 
   const TONIC_MIDI = 60; // C4 — centro tonal fixo para esta fatia (D-09: menor implementação viável)
-  const ACCURACY_KEY = 'intervals-accuracy';
   const TIER_KEY = 'intervals-tier';
   const VOLUME_KEY = 'intervals-volume';
   // Terceiro report de "tá baixo" após 3 rodadas de ajuste de gain fixo (0.2 -> 0.45
@@ -181,21 +176,6 @@
   };
 
   const engine = createEngine();
-
-  function loadAccuracyState() {
-    try {
-      const raw = localStorage.getItem(ACCURACY_KEY);
-      if (!raw) return { correct: 0, attempts: 0 };
-      const parsed = JSON.parse(raw);
-      return { correct: parsed.correct ?? 0, attempts: parsed.attempts ?? 0 };
-    } catch {
-      return { correct: 0, attempts: 0 };
-    }
-  }
-
-  function saveAccuracyState(state) {
-    localStorage.setItem(ACCURACY_KEY, JSON.stringify(state));
-  }
 
   function loadTierState() {
     try {
@@ -226,14 +206,14 @@
     return Number(volumeSlider.value) / 100;
   }
 
-  let accuracyState = loadAccuracyState();
   let tierState = loadTierState();
   let currentSemitones = null;
   let boxIndex = 0; // referência informativa — mover o arquivo em review/ continua manual (ver review/README.md)
   // Gamificação mínima (D-09/checkpoint 01-02, aprovado explicitamente pelo usuário:
   // "mínima: contador de streak + % da sessão", sem badges/rewards). Vive só em
-  // memória — reseta a cada carregamento de página, ao contrário de accuracyState
-  // (lifetime, persistido em localStorage). Isso é intencional: "sessão" != "total".
+  // memória — reseta a cada carregamento de página, de propósito: única estatística
+  // de acerto exibida é a da sessão atual (o placar "Total" lifetime foi removido
+  // a pedido do usuário — ver deviation no SUMMARY do plano 01-02).
   let sessionState = { correct: 0, attempts: 0 };
 
   const playBtn = document.getElementById('play-btn');
@@ -244,7 +224,6 @@
   const repeatBtn = document.getElementById('repeat-btn');
   const feedbackStep = document.getElementById('feedback-step');
   const feedbackDisplay = document.getElementById('feedback-display');
-  const accuracyDisplay = document.getElementById('accuracy-display');
   const sessionAccuracyDisplay = document.getElementById('session-accuracy-display');
   const streakDisplay = document.getElementById('streak-display');
   const boxHint = document.getElementById('box-hint');
@@ -262,12 +241,11 @@
     renderVolumeDisplay();
   });
 
+  // Fração bruta (não porcentagem) a pedido explícito do usuário — ver deviation
+  // no SUMMARY do plano 01-02. Única estatística de acerto exibida (o "Total"
+  // lifetime foi removido).
   function renderAccuracy() {
-    const pct = Math.round(accuracy(accuracyState.correct, accuracyState.attempts) * 100);
-    accuracyDisplay.textContent = accuracyState.attempts === 0 ? '—%' : `${pct}%`;
-
-    const sessionPct = Math.round(accuracy(sessionState.correct, sessionState.attempts) * 100);
-    sessionAccuracyDisplay.textContent = sessionState.attempts === 0 ? '—%' : `${sessionPct}%`;
+    sessionAccuracyDisplay.textContent = `${sessionState.correct}/${sessionState.attempts}`;
   }
 
   function renderStreak() {
@@ -338,11 +316,9 @@
     const correct = guessedSemitones === currentSemitones;
     const correctName = INTERVAL_NAMES[currentSemitones] ?? `${currentSemitones} semitons`;
 
-    accuracyState.attempts += 1;
     sessionState.attempts += 1;
 
     if (correct) {
-      accuracyState.correct += 1;
       sessionState.correct += 1;
       boxIndex = nextBox(boxIndex, 'forward');
       // Streak agora é só um contador de exibição (D-06 revisado: nunca muda
@@ -358,7 +334,6 @@
       feedbackDisplay.className = 'display feedback-incorrect';
     }
 
-    saveAccuracyState(accuracyState);
     saveTierState(tierState);
     renderAccuracy();
     renderStreak();
