@@ -108,6 +108,45 @@
   }
   .stats-row > div { flex: 1; }
 
+  /* Banner de feedback (polish geral): reforça certo/errado com fundo + borda,
+     não só a cor do texto — mais visível que só `.feedback-correct/.incorrect`. */
+  .feedback-step {
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+  }
+  .feedback-step-correct { background: #DCFCE7; border-color: var(--green); }
+  .feedback-step-incorrect { background: #FEE2E2; border-color: var(--red); }
+
+  /* Destaca no próprio botão qual era o intervalo certo (e o que foi clicado,
+     se errado) — fica visível até a próxima rodada, sem depender de timer. */
+  .btn-correct-highlight { border-color: var(--green); background: #DCFCE7; }
+  .btn-incorrect-highlight { border-color: var(--red); background: #FEE2E2; }
+  .btn-correct-highlight:disabled, .btn-incorrect-highlight:disabled { opacity: 1; }
+
+  /* Atalho de teclado: número do botão (1-9) exibido como badge discreto. */
+  .key-hint {
+    display: inline-block;
+    min-width: 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    margin-right: 6px;
+  }
+
+  /* Agrupa Dificuldade + Volume numa linha de configurações (UI-SPEC: tighten
+     spacing/hierarchy) — empilha sozinho em telas estreitas via flex-wrap. */
+  .settings-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 8px 0 16px;
+  }
+  .settings-col { flex: 1 1 160px; min-width: 140px; }
+  .settings-col select,
+  .settings-col input[type="range"] { width: 100%; }
+
   .confusion-list {
     list-style: none;
     margin: 8px 0 0;
@@ -138,24 +177,30 @@
     <h1>Reconhecimento de Intervalo</h1>
     <p class="body-text" id="instruction">Ouça a nota de referência, depois o intervalo enquadrado por grau. Depois escolha qual intervalo você ouviu — a resposta certa aparece na hora.</p>
 
-    <label class="label" for="tier-select" style="display:block;">Dificuldade</label>
-    <select class="btn-secondary" id="tier-select" style="margin: 0 0 8px;"></select>
-
-    <label class="label" for="volume-slider" style="display:flex; justify-content:space-between;">
-      <span>Volume</span><span id="volume-display"></span>
-    </label>
-    <input type="range" id="volume-slider" min="0" max="100" step="1" style="width:100%; min-height:44px;">
+    <div class="settings-row">
+      <div class="settings-col">
+        <label class="label" for="tier-select" style="display:block;">Dificuldade</label>
+        <select id="tier-select"></select>
+      </div>
+      <div class="settings-col">
+        <label class="label" for="volume-slider" style="display:flex; justify-content:space-between;">
+          <span>Volume</span><span id="volume-display"></span>
+        </label>
+        <input type="range" id="volume-slider" min="0" max="100" step="1">
+      </div>
+    </div>
 
     <button class="btn-primary" id="play-btn">Tocar intervalo</button>
+    <p class="label" style="margin-top:-8px;">Atalho: barra de espaço toca (ou repete, se a rodada estiver aberta).</p>
     <p class="error hidden" id="audio-error">Não consegui tocar o som agora. Clique em 'Tocar' de novo para ativar o áudio do navegador.</p>
 
     <div id="guess-step" class="hidden">
-      <p class="label">Qual intervalo você ouviu?</p>
+      <p class="label">Qual intervalo você ouviu? <span style="font-weight:400;">(número 1-9 escolhe direto)</span></p>
       <button class="btn-secondary" id="repeat-btn">Repetir</button>
       <div class="guess-row" id="guess-row"></div>
     </div>
 
-    <div id="feedback-step" class="hidden">
+    <div id="feedback-step" class="feedback-step hidden">
       <p class="display" id="feedback-display"></p>
       <p class="label" id="box-hint"></p>
     </div>
@@ -193,8 +238,8 @@
   const TONIC_MIDI = 60; // C4 — centro tonal fixo para esta fatia (D-09: menor implementação viável)
   const TIER_KEY = 'intervals-tier';
   const VOLUME_KEY = 'intervals-volume';
-  // Feature pedida pelo usuário (registro de erros pra aprender com eles): registrar
-  // confusões recorrentes ("2ª menor" costuma ser confundida com "3ª menor" etc.) pra
+  // Feature pedida pelo usuário (rodada de polish geral): registrar confusões
+  // recorrentes ("2ª menor" costuma ser confundida com "3ª menor" etc.) pra
   // virarem candidatas a card manual em review/box-1-ainda-nao-sei/. Persistido
   // (ao contrário da % de sessão) porque o valor dele é justamente acumular
   // padrão entre sessões — mapa "correto>chutado" -> contagem.
@@ -268,6 +313,7 @@
 
   let tierState = loadTierState();
   let confusions = loadConfusions();
+  let roundOpen = false; // fonte única de verdade pra atalhos de teclado — independe do que está visível na tela
   let currentSemitones = null;
   let boxIndex = 0; // referência informativa — mover o arquivo em review/ continua manual (ver review/README.md)
   // Gamificação mínima (D-09/checkpoint 01-02, aprovado explicitamente pelo usuário:
@@ -395,25 +441,41 @@
     guessStep.classList.add('hidden');
     feedbackStep.classList.add('hidden');
     audioError.classList.add('hidden');
+    roundOpen = false;
   }
 
   // Multiple-choice em vez de canto: um botão por intervalo do tier atual (deviation
   // do checkpoint 01-02 — ver 01-CONTEXT.md D-10). Ordem ascendente de semitons.
+  // Cada botão ganha um número 1-9 (atalho de teclado, polish geral) como badge.
   function buildGuessButtons() {
     guessRow.innerHTML = '';
     const tier = DIFFICULTY_TIERS[tierState.tierIndex] ?? DIFFICULTY_TIERS[DIFFICULTY_TIERS.length - 1];
     const options = [...tier].sort((a, b) => a - b);
-    options.forEach((semitones) => {
+    options.forEach((semitones, index) => {
       const btn = document.createElement('button');
       btn.className = 'btn-secondary';
-      btn.textContent = INTERVAL_NAMES[semitones] ?? `${semitones} semitons`;
       btn.dataset.semitones = String(semitones);
+      const label = INTERVAL_NAMES[semitones] ?? `${semitones} semitons`;
+      if (index < 9) {
+        const keyHint = document.createElement('span');
+        keyHint.className = 'key-hint';
+        keyHint.textContent = String(index + 1);
+        btn.appendChild(keyHint);
+        btn.appendChild(document.createTextNode(label));
+      } else {
+        btn.textContent = label;
+      }
       btn.addEventListener('click', () => handleGuess(semitones));
       guessRow.appendChild(btn);
     });
   }
 
   function handleGuess(guessedSemitones) {
+    // Guarda contra clique/atalho fora de hora (ex.: tecla de número reenviada
+    // depois que a rodada já foi resolvida) — roundOpen é a fonte de verdade.
+    if (!roundOpen) return;
+    roundOpen = false;
+
     const correct = guessedSemitones === currentSemitones;
     const correctName = INTERVAL_NAMES[currentSemitones] ?? `${currentSemitones} semitons`;
 
@@ -444,8 +506,24 @@
     renderStreak();
     renderBoxHint();
 
-    guessStep.classList.add('hidden');
+    // Polish (feedback mais visível): banner colorido no container, não só o
+    // texto — e destaca no próprio botão qual era a resposta certa (e a
+    // errada, se for o caso). Fica visível até a próxima rodada — sem timer,
+    // sem depender de setTimeout.
+    feedbackStep.classList.remove('feedback-step-correct', 'feedback-step-incorrect');
+    feedbackStep.classList.add(correct ? 'feedback-step-correct' : 'feedback-step-incorrect');
     feedbackStep.classList.remove('hidden');
+
+    guessRow.querySelectorAll('button').forEach((btn) => {
+      const semitones = Number(btn.dataset.semitones);
+      btn.disabled = true;
+      if (semitones === currentSemitones) {
+        btn.classList.add('btn-correct-highlight');
+      } else if (!correct && semitones === guessedSemitones) {
+        btn.classList.add('btn-incorrect-highlight');
+      }
+    });
+    repeatBtn.disabled = true;
 
     // Fix (bug report Task 3): só libera tocar um novo intervalo depois que o
     // usuário respondeu — reabilita o botão aqui, não no clique do play.
@@ -475,6 +553,8 @@
       engine.playInterval(TONIC_MIDI, currentSemitones, currentGain());
       buildGuessButtons();
       guessStep.classList.remove('hidden');
+      repeatBtn.disabled = false;
+      roundOpen = true;
       // Trava o botão enquanto a rodada aguarda resposta — clicar de novo aqui
       // pulava a rodada atual e tocava um intervalo novo sem o usuário responder.
       playBtn.disabled = true;
@@ -484,6 +564,34 @@
       tierSelect.disabled = true;
     } catch (err) {
       audioError.classList.remove('hidden');
+    }
+  });
+
+  // Atalhos de teclado (polish geral): espaço/enter toca ou repete (dependendo
+  // de `roundOpen`, não do que está visível na tela); teclas 1-9 escolhem o
+  // botão correspondente enquanto a rodada está aberta. Guarda de foco: se o
+  // seletor de dificuldade ou o slider de volume estiver focado, não faz nada
+  // (evita disparo duplo em setas/espaço nesses controles nativos).
+  document.addEventListener('keydown', (event) => {
+    const active = document.activeElement;
+    if (active === tierSelect || active === volumeSlider) return;
+
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      if (roundOpen) {
+        if (!repeatBtn.disabled) repeatBtn.click();
+      } else if (!playBtn.disabled) {
+        playBtn.click();
+      }
+      return;
+    }
+
+    if (roundOpen) {
+      const num = Number(event.key);
+      if (Number.isInteger(num) && num >= 1 && num <= 9) {
+        const target = guessRow.querySelector(`button[data-semitones]:nth-child(${num})`);
+        if (target && !target.disabled) target.click();
+      }
     }
   });
 
