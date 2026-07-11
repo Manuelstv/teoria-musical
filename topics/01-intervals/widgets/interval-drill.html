@@ -107,6 +107,30 @@
     margin-top: 8px;
   }
   .stats-row > div { flex: 1; }
+
+  .confusion-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1.4;
+    color: #475569;
+  }
+  .confusion-list li { margin: 4px 0; overflow-wrap: break-word; }
+  .confusion-empty { color: #94a3b8; }
+
+  /* Ação secundária de baixa frequência (limpar log) — deliberadamente menor
+     que o mínimo de 44px reservado a controles de jogo (Tocar/Repetir/respostas). */
+  .link-btn {
+    min-height: auto;
+    min-width: auto;
+    border: none;
+    background: none;
+    color: var(--accent);
+    font-size: 13px;
+    padding: 4px 0;
+    text-decoration: underline;
+  }
 </style>
 </head>
 <body>
@@ -146,6 +170,14 @@
         </div>
       </div>
     </div>
+
+    <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:16px;">
+      <p class="label" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0;">
+        <span>Confusões frequentes</span>
+        <button type="button" class="link-btn hidden" id="clear-confusions-btn">limpar</button>
+      </p>
+      <ul class="confusion-list" id="confusion-list"></ul>
+    </div>
   </main>
 
 <script src="../../../widgets/lib/ear-trainer.js"></script>
@@ -161,6 +193,13 @@
   const TONIC_MIDI = 60; // C4 — centro tonal fixo para esta fatia (D-09: menor implementação viável)
   const TIER_KEY = 'intervals-tier';
   const VOLUME_KEY = 'intervals-volume';
+  // Feature pedida pelo usuário (registro de erros pra aprender com eles): registrar
+  // confusões recorrentes ("2ª menor" costuma ser confundida com "3ª menor" etc.) pra
+  // virarem candidatas a card manual em review/box-1-ainda-nao-sei/. Persistido
+  // (ao contrário da % de sessão) porque o valor dele é justamente acumular
+  // padrão entre sessões — mapa "correto>chutado" -> contagem.
+  const CONFUSION_KEY = 'intervals-confusions';
+  const CONFUSIONS_SHOWN = 5;
   // Terceiro report de "tá baixo" após 3 rodadas de ajuste de gain fixo (0.2 -> 0.45
   // -> 0.8) — em vez de continuar chutando um número fixo no engine, expõe controle
   // direto pro usuário. Escala 0-100 no slider (mais intuitivo que 0-1), convertido
@@ -206,7 +245,29 @@
     return Number(volumeSlider.value) / 100;
   }
 
+  function loadConfusions() {
+    try {
+      const raw = localStorage.getItem(CONFUSION_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveConfusions(map) {
+    localStorage.setItem(CONFUSION_KEY, JSON.stringify(map));
+  }
+
+  function recordConfusion(correctSemitones, guessedSemitones) {
+    const key = `${correctSemitones}>${guessedSemitones}`;
+    confusions[key] = (confusions[key] || 0) + 1;
+    saveConfusions(confusions);
+  }
+
   let tierState = loadTierState();
+  let confusions = loadConfusions();
   let currentSemitones = null;
   let boxIndex = 0; // referência informativa — mover o arquivo em review/ continua manual (ver review/README.md)
   // Gamificação mínima (D-09/checkpoint 01-02, aprovado explicitamente pelo usuário:
@@ -229,6 +290,8 @@
   const boxHint = document.getElementById('box-hint');
   const volumeSlider = document.getElementById('volume-slider');
   const volumeDisplay = document.getElementById('volume-display');
+  const confusionList = document.getElementById('confusion-list');
+  const clearConfusionsBtn = document.getElementById('clear-confusions-btn');
 
   function renderVolumeDisplay() {
     volumeDisplay.textContent = `${volumeSlider.value}%`;
@@ -255,6 +318,44 @@
   function renderBoxHint() {
     boxHint.textContent = `Isso te levaria para: ${BOXES[boxIndex]} (mover manualmente em review/, ver review/README.md)`;
   }
+
+  // Lista as N confusões mais frequentes ("correto -> chutado") em PT-BR legível,
+  // usando o mapa já existente INTERVAL_NAMES. Vazio -> placeholder neutro.
+  function renderConfusions() {
+    const entries = Object.entries(confusions)
+      .map(([key, count]) => {
+        const [correct, guessed] = key.split('>').map(Number);
+        return { correct, guessed, count };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, CONFUSIONS_SHOWN);
+
+    confusionList.innerHTML = '';
+
+    if (entries.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'confusion-empty';
+      li.textContent = 'Nenhuma confusão registrada ainda.';
+      confusionList.appendChild(li);
+      clearConfusionsBtn.classList.add('hidden');
+      return;
+    }
+
+    entries.forEach(({ correct, guessed, count }) => {
+      const correctName = INTERVAL_NAMES[correct] ?? `${correct} semitons`;
+      const guessedName = INTERVAL_NAMES[guessed] ?? `${guessed} semitons`;
+      const li = document.createElement('li');
+      li.textContent = `${correctName} → você respondeu ${guessedName} (${count}×)`;
+      confusionList.appendChild(li);
+    });
+    clearConfusionsBtn.classList.remove('hidden');
+  }
+
+  clearConfusionsBtn.addEventListener('click', () => {
+    confusions = {};
+    saveConfusions(confusions);
+    renderConfusions();
+  });
 
   // Feature (pedido do usuário no checkpoint 01-02): permite escolher manualmente
   // o tier de dificuldade — D-06 revisado: dificuldade é 100% controlada pelo
@@ -332,6 +433,10 @@
       tierState.streak = 0;
       feedbackDisplay.textContent = `Errado — era ${correctName}`;
       feedbackDisplay.className = 'display feedback-incorrect';
+      // Feature (pedido explícito do usuário): registra a confusão pra virar
+      // candidata a card de revisão manual (ver README do tema, seção Métricas).
+      recordConfusion(currentSemitones, guessedSemitones);
+      renderConfusions();
     }
 
     saveTierState(tierState);
@@ -386,6 +491,7 @@
   renderTierSelect();
   renderAccuracy();
   renderStreak();
+  renderConfusions();
 </script>
 </body>
 </html>
