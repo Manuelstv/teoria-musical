@@ -584,6 +584,11 @@
       resetToWaiting();
       engine.resume();
       currentSemitones = pickSemitones();
+      // Trava e avisa ANTES de esperar o piano carregar — na primeira tocada da
+      // sessão, decodificar as amostras do soundfont leva alguns segundos, e sem
+      // esse aviso o botão parecia travado/sem resposta, convidando clique duplo.
+      playBtn.disabled = true;
+      playBtn.textContent = 'Carregando piano...';
       await engine.playInterval(TONIC_MIDI, currentSemitones, currentGain());
       buildGuessButtons();
       guessStep.classList.remove('hidden');
@@ -591,12 +596,13 @@
       roundOpen = true;
       // Trava o botão enquanto a rodada aguarda resposta — clicar de novo aqui
       // pulava a rodada atual e tocava um intervalo novo sem o usuário responder.
-      playBtn.disabled = true;
       playBtn.textContent = 'Aguardando resposta...';
       // Trava o seletor de dificuldade também — não pode trocar de tier com
       // a rodada em aberto (mesma regra do playBtn).
       tierSelect.disabled = true;
     } catch (err) {
+      playBtn.disabled = false;
+      playBtn.textContent = 'Tocar intervalo';
       audioError.classList.remove('hidden');
     }
   });
