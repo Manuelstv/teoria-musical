@@ -170,9 +170,34 @@
     padding: 4px 0;
     text-decoration: underline;
   }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 10;
+  }
+  .modal-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 420px;
+  }
+  .modal-box p { font-size: 15px; line-height: 1.5; margin: 0 0 16px; }
 </style>
 </head>
 <body>
+  <div class="modal-overlay hidden" id="tutorial-modal">
+    <div class="modal-box">
+      <p>Como funciona: clica em "Tocar intervalo" pra ouvir duas notas tocadas em sequência. Depois clica no botão com o nome do intervalo que você acha que ouviu (ex: "3ª maior").</p>
+      <button class="btn-primary" id="tutorial-close-btn" style="margin:0;">Entendi</button>
+    </div>
+  </div>
   <main class="panel">
     <h1>Reconhecimento de Intervalo</h1>
     <p class="body-text" id="instruction">Ouça a nota de referência, depois o intervalo enquadrado por grau. Depois escolha qual intervalo você ouviu — a resposta certa aparece na hora.</p>
@@ -234,6 +259,15 @@
   // widgets/lib/ear-trainer.js.
   const { createEngine, DIFFICULTY_TIERS } = EarTrainer;
   const { BOXES, nextBox } = ReviewLeitner;
+
+  const TUTORIAL_SEEN_KEY = 'intervals-tutorial-seen';
+  if (!localStorage.getItem(TUTORIAL_SEEN_KEY)) {
+    document.getElementById('tutorial-modal').classList.remove('hidden');
+  }
+  document.getElementById('tutorial-close-btn').addEventListener('click', () => {
+    localStorage.setItem(TUTORIAL_SEEN_KEY, '1');
+    document.getElementById('tutorial-modal').classList.add('hidden');
+  });
 
   const TONIC_MIDI = 60; // C4 — centro tonal fixo para esta fatia (D-09: menor implementação viável)
   const TIER_KEY = 'intervals-tier';
