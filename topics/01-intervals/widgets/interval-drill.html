@@ -252,6 +252,7 @@
     </div>
   </main>
 
+<script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
 <script src="../../../widgets/lib/ear-trainer.js"></script>
 <script src="../../../widgets/lib/review.js"></script>
 <script>
@@ -574,7 +575,8 @@
   // com os botões de resposta.
   repeatBtn.addEventListener('click', () => {
     if (currentSemitones === null) return;
-    engine.playInterval(TONIC_MIDI, currentSemitones, currentGain());
+    engine.playInterval(TONIC_MIDI, currentSemitones, currentGain())
+      .catch(() => audioError.classList.remove('hidden'));
   });
 
   playBtn.addEventListener('click', async () => {
@@ -582,7 +584,7 @@
       resetToWaiting();
       engine.resume();
       currentSemitones = pickSemitones();
-      engine.playInterval(TONIC_MIDI, currentSemitones, currentGain());
+      await engine.playInterval(TONIC_MIDI, currentSemitones, currentGain());
       buildGuessButtons();
       guessStep.classList.remove('hidden');
       repeatBtn.disabled = false;
