@@ -229,7 +229,6 @@
 
     <div id="guess-step" class="hidden">
       <p class="label">Qual intervalo você ouviu? <span style="font-weight:400;">(número 1-9 escolhe direto)</span></p>
-      <button class="btn-secondary" id="repeat-btn">Repetir</button>
       <div class="guess-row" id="guess-row"></div>
     </div>
 
@@ -367,7 +366,6 @@
   const audioError = document.getElementById('audio-error');
   const guessStep = document.getElementById('guess-step');
   const guessRow = document.getElementById('guess-row');
-  const repeatBtn = document.getElementById('repeat-btn');
   const feedbackStep = document.getElementById('feedback-step');
   const feedbackDisplay = document.getElementById('feedback-display');
   const sessionAccuracyDisplay = document.getElementById('session-accuracy-display');
@@ -562,8 +560,6 @@
         btn.classList.add('btn-incorrect-highlight');
       }
     });
-    repeatBtn.disabled = true;
-
     // Fix (bug report Task 3): só libera tocar um novo intervalo depois que o
     // usuário respondeu — reabilita o botão aqui, não no clique do play.
     playBtn.disabled = false;
@@ -574,18 +570,16 @@
     tierSelect.disabled = false;
   }
 
-  // Feature (pedido do usuário no checkpoint 01-02): reouvir o intervalo da
-  // rodada atual quantas vezes quiser enquanto ela estiver em aberto — não
-  // sorteia um intervalo novo, não mexe em accuracy/box/tier, não reabilita
-  // o playBtn principal. Fica dentro de #guess-step, então some/aparece junto
-  // com os botões de resposta.
-  repeatBtn.addEventListener('click', () => {
-    if (currentSemitones === null) return;
-    engine.playInterval(TONIC_MIDI, currentSemitones, currentGain())
-      .catch(() => audioError.classList.remove('hidden'));
-  });
-
   playBtn.addEventListener('click', async () => {
+    // Rodada já em aberto: o mesmo botão reouve o intervalo atual (pedido do
+    // usuário no checkpoint 01-02) — não sorteia um intervalo novo, não mexe
+    // em accuracy/box/tier.
+    if (roundOpen) {
+      engine.playInterval(TONIC_MIDI, currentSemitones, currentGain())
+        .catch(() => audioError.classList.remove('hidden'));
+      return;
+    }
+
     try {
       resetToWaiting();
       engine.resume();
@@ -598,11 +592,12 @@
       await engine.playInterval(TONIC_MIDI, currentSemitones, currentGain());
       buildGuessButtons();
       guessStep.classList.remove('hidden');
-      repeatBtn.disabled = false;
       roundOpen = true;
-      // Trava o botão enquanto a rodada aguarda resposta — clicar de novo aqui
-      // pulava a rodada atual e tocava um intervalo novo sem o usuário responder.
-      playBtn.textContent = 'Aguardando resposta...';
+      // Vira "Repetir" (mesmo botão, sem travar) enquanto a rodada aguarda
+      // resposta — clicar de novo aqui reouve o intervalo em vez de pular a
+      // rodada e sortear outro sem o usuário responder.
+      playBtn.disabled = false;
+      playBtn.textContent = 'Repetir';
       // Trava o seletor de dificuldade também — não pode trocar de tier com
       // a rodada em aberto (mesma regra do playBtn).
       tierSelect.disabled = true;
@@ -624,11 +619,7 @@
 
     if (event.key === ' ' || event.key === 'Enter') {
       event.preventDefault();
-      if (roundOpen) {
-        if (!repeatBtn.disabled) repeatBtn.click();
-      } else if (!playBtn.disabled) {
-        playBtn.click();
-      }
+      if (!playBtn.disabled) playBtn.click();
       return;
     }
 
