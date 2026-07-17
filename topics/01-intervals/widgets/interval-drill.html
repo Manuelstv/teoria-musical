@@ -234,7 +234,6 @@
 
     <div id="feedback-step" class="feedback-step hidden">
       <p class="display" id="feedback-display"></p>
-      <p class="label" id="box-hint"></p>
     </div>
 
     <div style="margin-top:24px; border-top:1px solid var(--border); padding-top:16px;">
@@ -259,14 +258,12 @@
 
 <script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
 <script src="../../../widgets/lib/ear-trainer.js"></script>
-<script src="../../../widgets/lib/review.js"></script>
 <script>
   // Carregado via <script src> clássico (script de módulo ES falha em silêncio ao
   // importar outro arquivo quando a página é aberta por duplo-clique — protocolo
   // file:// — no Chrome/Edge, derrubando o script inteiro). Ver comentário em
   // widgets/lib/ear-trainer.js.
   const { createEngine, DIFFICULTY_TIERS } = EarTrainer;
-  const { BOXES, nextBox } = ReviewLeitner;
 
   document.getElementById('tutorial-modal').classList.remove('hidden');
   document.getElementById('tutorial-close-btn').addEventListener('click', () => {
@@ -353,7 +350,6 @@
   let confusions = loadConfusions();
   let roundOpen = false; // fonte única de verdade pra atalhos de teclado — independe do que está visível na tela
   let currentSemitones = null;
-  let boxIndex = 0; // referência informativa — mover o arquivo em review/ continua manual (ver review/README.md)
   // Gamificação mínima (D-09/checkpoint 01-02, aprovado explicitamente pelo usuário:
   // "mínima: contador de streak + % da sessão", sem badges/rewards). Vive só em
   // memória — reseta a cada carregamento de página, de propósito: única estatística
@@ -370,7 +366,6 @@
   const feedbackDisplay = document.getElementById('feedback-display');
   const sessionAccuracyDisplay = document.getElementById('session-accuracy-display');
   const streakDisplay = document.getElementById('streak-display');
-  const boxHint = document.getElementById('box-hint');
   const volumeSlider = document.getElementById('volume-slider');
   const volumeDisplay = document.getElementById('volume-display');
   const confusionList = document.getElementById('confusion-list');
@@ -396,10 +391,6 @@
 
   function renderStreak() {
     streakDisplay.textContent = String(tierState.streak);
-  }
-
-  function renderBoxHint() {
-    boxHint.textContent = `Isso te levaria para: ${BOXES[boxIndex]} (mover manualmente em review/, ver review/README.md)`;
   }
 
   // Lista as N confusões mais frequentes ("correto -> chutado") em PT-BR legível,
@@ -520,7 +511,6 @@
 
     if (correct) {
       sessionState.correct += 1;
-      boxIndex = nextBox(boxIndex, 'forward');
       // Streak agora é só um contador de exibição (D-06 revisado: nunca muda
       // o tier sozinho) — mantido pra alimentar o "Sequência" da gamificação
       // mínima aprovada no checkpoint (streak + % da sessão).
@@ -528,7 +518,6 @@
       feedbackDisplay.textContent = 'Certo!';
       feedbackDisplay.className = 'display feedback-correct';
     } else {
-      boxIndex = nextBox(boxIndex, 'back');
       tierState.streak = 0;
       feedbackDisplay.textContent = `Errado — era ${correctName}`;
       feedbackDisplay.className = 'display feedback-incorrect';
@@ -541,7 +530,6 @@
     saveTierState(tierState);
     renderAccuracy();
     renderStreak();
-    renderBoxHint();
 
     // Polish (feedback mais visível): banner colorido no container, não só o
     // texto — e destaca no próprio botão qual era a resposta certa (e a
