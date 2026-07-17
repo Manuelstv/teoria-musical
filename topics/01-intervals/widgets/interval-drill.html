@@ -262,12 +262,8 @@
   const { createEngine, DIFFICULTY_TIERS } = EarTrainer;
   const { BOXES, nextBox } = ReviewLeitner;
 
-  const TUTORIAL_SEEN_KEY = 'intervals-tutorial-seen';
-  if (!localStorage.getItem(TUTORIAL_SEEN_KEY)) {
-    document.getElementById('tutorial-modal').classList.remove('hidden');
-  }
+  document.getElementById('tutorial-modal').classList.remove('hidden');
   document.getElementById('tutorial-close-btn').addEventListener('click', () => {
-    localStorage.setItem(TUTORIAL_SEEN_KEY, '1');
     document.getElementById('tutorial-modal').classList.add('hidden');
   });
 
