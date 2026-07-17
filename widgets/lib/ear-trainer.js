@@ -109,13 +109,9 @@
 
       const gapAfterReference = 0.15;
       const noteDurationMs = 600;
-      const noteGap = 0.1;
 
-      const firstNoteWhen = referenceDurationSec + gapAfterReference;
-      scheduleNote(piano, ctx, tonicMidi, noteDurationMs, firstNoteWhen, gain);
-
-      const secondNoteWhen = firstNoteWhen + noteDurationMs / 1000 + noteGap;
-      scheduleNote(piano, ctx, degreeToMidi(tonicMidi, semitones), noteDurationMs, secondNoteWhen, gain);
+      const noteWhen = referenceDurationSec + gapAfterReference;
+      scheduleNote(piano, ctx, degreeToMidi(tonicMidi, semitones), noteDurationMs, noteWhen, gain);
     }
 
     function playClick(when = 0, accent = false) {
