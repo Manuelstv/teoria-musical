@@ -109,7 +109,7 @@
       const referenceDurationSec = scheduleNote(piano, ctx, tonicMidi, 700, 0, gain) - ctx.currentTime;
 
       const gapAfterReference = 0.15;
-      const noteDurationMs = 600;
+      const noteDurationMs = 1200; // 2ª nota (o intervalo) soa o dobro da duração anterior (600ms) — pedido do usuário
 
       const noteWhen = referenceDurationSec + gapAfterReference;
       scheduleNote(piano, ctx, degreeToMidi(tonicMidi, semitones), noteDurationMs, noteWhen, gain);
