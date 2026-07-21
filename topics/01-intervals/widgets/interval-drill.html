@@ -142,8 +142,8 @@
     margin-right: 6px;
   }
 
-  /* Agrupa Dificuldade + Volume numa linha de configurações (UI-SPEC: tighten
-     spacing/hierarchy) — empilha sozinho em telas estreitas via flex-wrap. */
+  /* Linha de configurações (UI-SPEC: tighten spacing/hierarchy) — hoje só o
+     seletor de Dificuldade; empilha sozinho em telas estreitas via flex-wrap. */
   .settings-row {
     display: flex;
     flex-wrap: wrap;
@@ -151,8 +151,7 @@
     margin: 8px 0 16px;
   }
   .settings-col { flex: 1 1 160px; min-width: 140px; }
-  .settings-col select,
-  .settings-col input[type="range"] { width: 100%; }
+  .settings-col select { width: 100%; }
 
   .confusion-list {
     list-style: none;
@@ -215,20 +214,13 @@
         <label class="label" for="tier-select" style="display:block;">Dificuldade</label>
         <select id="tier-select"></select>
       </div>
-      <div class="settings-col">
-        <label class="label" for="volume-slider" style="display:flex; justify-content:space-between;">
-          <span>Volume</span><span id="volume-display"></span>
-        </label>
-        <input type="range" id="volume-slider" min="0" max="100" step="1">
-      </div>
     </div>
 
     <button class="btn-primary" id="play-btn">Tocar intervalo</button>
-    <p class="label" style="margin-top:-8px;">Atalho: barra de espaço toca (ou repete, se a rodada estiver aberta).</p>
     <p class="error hidden" id="audio-error">Não consegui tocar o som agora. Clique em 'Tocar' de novo para ativar o áudio do navegador.</p>
 
     <div id="guess-step" class="hidden">
-      <p class="label">Qual intervalo você ouviu? <span style="font-weight:400;">(número 1-9 escolhe direto)</span></p>
+      <p class="label">Qual intervalo você ouviu?</p>
       <div class="guess-row" id="guess-row"></div>
     </div>
 
@@ -237,14 +229,8 @@
     </div>
 
     <div style="margin-top:24px; border-top:1px solid var(--border); padding-top:16px;">
-      <p class="label">Sequência</p>
-      <p class="display" id="streak-display">0</p>
-      <div class="stats-row">
-        <div>
-          <p class="label">Sessão</p>
-          <p class="display" id="session-accuracy-display">0/0</p>
-        </div>
-      </div>
+      <p class="label">Score</p>
+      <p class="display" id="session-accuracy-display">0/0</p>
     </div>
 
     <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:16px;">
@@ -272,7 +258,6 @@
 
   const TONIC_MIDI = 60; // C4 — centro tonal fixo para esta fatia (D-09: menor implementação viável)
   const TIER_KEY = 'intervals-tier';
-  const VOLUME_KEY = 'intervals-volume';
   // Feature pedida pelo usuário (rodada de polish geral): registrar confusões
   // recorrentes ("2ª menor" costuma ser confundida com "3ª menor" etc.) pra
   // virarem candidatas a card manual em review/box-1-ainda-nao-sei/. Persistido
@@ -280,13 +265,6 @@
   // padrão entre sessões — mapa "correto>chutado" -> contagem.
   const CONFUSION_KEY = 'intervals-confusions';
   const CONFUSIONS_SHOWN = 5;
-  // Terceiro report de "tá baixo" após 3 rodadas de ajuste de gain fixo (0.2 -> 0.45
-  // -> 0.8) — em vez de continuar chutando um número fixo no engine, expõe controle
-  // direto pro usuário. Escala 0-100 no slider (mais intuitivo que 0-1), convertido
-  // pra gain 0-1 na hora de chamar o engine. Default 95 casa com o novo teto de gain
-  // do engine (ear-trainer.js: 0.95) — ou seja, o slider começa onde o "fix definitivo"
-  // do volume padrão ficou, e o usuário só desce se achar alto, ou mantém no talo.
-  const DEFAULT_VOLUME = 95;
 
   const INTERVAL_NAMES = {
     1: '2ª menor', 2: '2ª maior', 3: '3ª menor', 4: '3ª maior',
@@ -299,11 +277,11 @@
   function loadTierState() {
     try {
       const raw = localStorage.getItem(TIER_KEY);
-      if (!raw) return { tierIndex: 0, streak: 0 };
+      if (!raw) return { tierIndex: 0 };
       const parsed = JSON.parse(raw);
-      return { tierIndex: parsed.tierIndex ?? 0, streak: parsed.streak ?? 0 };
+      return { tierIndex: parsed.tierIndex ?? 0 };
     } catch {
-      return { tierIndex: 0, streak: 0 };
+      return { tierIndex: 0 };
     }
   }
 
@@ -311,18 +289,9 @@
     localStorage.setItem(TIER_KEY, JSON.stringify(state));
   }
 
-  function loadVolume() {
-    const raw = localStorage.getItem(VOLUME_KEY);
-    const parsed = raw === null ? NaN : Number(raw);
-    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : DEFAULT_VOLUME;
-  }
-
-  function saveVolume(value) {
-    localStorage.setItem(VOLUME_KEY, String(value));
-  }
-
+  // Volume fixo no máximo (slider removido a pedido do usuário) — teto do engine.
   function currentGain() {
-    return Number(volumeSlider.value) / 100;
+    return 1.0;
   }
 
   function loadConfusions() {
@@ -350,11 +319,9 @@
   let confusions = loadConfusions();
   let roundOpen = false; // fonte única de verdade pra atalhos de teclado — independe do que está visível na tela
   let currentSemitones = null;
-  // Gamificação mínima (D-09/checkpoint 01-02, aprovado explicitamente pelo usuário:
-  // "mínima: contador de streak + % da sessão", sem badges/rewards). Vive só em
-  // memória — reseta a cada carregamento de página, de propósito: única estatística
-  // de acerto exibida é a da sessão atual (o placar "Total" lifetime foi removido
-  // a pedido do usuário — ver deviation no SUMMARY do plano 01-02).
+  // Score da sessão (fração acertos/tentativas). Vive só em memória — reseta a
+  // cada carregamento de página, de propósito. É a única estatística exibida (o
+  // "Total" lifetime e a "Sequência"/streak foram removidos a pedido do usuário).
   let sessionState = { correct: 0, attempts: 0 };
 
   const playBtn = document.getElementById('play-btn');
@@ -365,32 +332,14 @@
   const feedbackStep = document.getElementById('feedback-step');
   const feedbackDisplay = document.getElementById('feedback-display');
   const sessionAccuracyDisplay = document.getElementById('session-accuracy-display');
-  const streakDisplay = document.getElementById('streak-display');
-  const volumeSlider = document.getElementById('volume-slider');
-  const volumeDisplay = document.getElementById('volume-display');
   const confusionList = document.getElementById('confusion-list');
   const clearConfusionsBtn = document.getElementById('clear-confusions-btn');
-
-  function renderVolumeDisplay() {
-    volumeDisplay.textContent = `${volumeSlider.value}%`;
-  }
-
-  volumeSlider.value = String(loadVolume());
-  renderVolumeDisplay();
-  volumeSlider.addEventListener('input', () => {
-    saveVolume(Number(volumeSlider.value));
-    renderVolumeDisplay();
-  });
 
   // Fração bruta (não porcentagem) a pedido explícito do usuário — ver deviation
   // no SUMMARY do plano 01-02. Única estatística de acerto exibida (o "Total"
   // lifetime foi removido).
   function renderAccuracy() {
     sessionAccuracyDisplay.textContent = `${sessionState.correct}/${sessionState.attempts}`;
-  }
-
-  function renderStreak() {
-    streakDisplay.textContent = String(tierState.streak);
   }
 
   // Lista as N confusões mais frequentes ("correto -> chutado") em PT-BR legível,
@@ -455,9 +404,7 @@
   // ("eu acho que só eu deveria mexer na dificuldade").
   tierSelect.addEventListener('change', () => {
     tierState.tierIndex = Number(tierSelect.value);
-    tierState.streak = 0;
     saveTierState(tierState);
-    renderStreak();
   });
 
   function pickSemitones() {
@@ -511,14 +458,9 @@
 
     if (correct) {
       sessionState.correct += 1;
-      // Streak agora é só um contador de exibição (D-06 revisado: nunca muda
-      // o tier sozinho) — mantido pra alimentar o "Sequência" da gamificação
-      // mínima aprovada no checkpoint (streak + % da sessão).
-      tierState.streak += 1;
       feedbackDisplay.textContent = 'Certo!';
       feedbackDisplay.className = 'display feedback-correct';
     } else {
-      tierState.streak = 0;
       feedbackDisplay.textContent = `Errado — era ${correctName}`;
       feedbackDisplay.className = 'display feedback-incorrect';
       // Feature (pedido explícito do usuário): registra a confusão pra virar
@@ -527,9 +469,7 @@
       renderConfusions();
     }
 
-    saveTierState(tierState);
     renderAccuracy();
-    renderStreak();
 
     // Polish (feedback mais visível): banner colorido no container, não só o
     // texto — e destaca no próprio botão qual era a resposta certa (e a
@@ -599,11 +539,11 @@
   // Atalhos de teclado (polish geral): espaço/enter toca ou repete (dependendo
   // de `roundOpen`, não do que está visível na tela); teclas 1-9 escolhem o
   // botão correspondente enquanto a rodada está aberta. Guarda de foco: se o
-  // seletor de dificuldade ou o slider de volume estiver focado, não faz nada
-  // (evita disparo duplo em setas/espaço nesses controles nativos).
+  // seletor de dificuldade estiver focado, não faz nada (evita disparo duplo em
+  // setas/espaço nesse controle nativo).
   document.addEventListener('keydown', (event) => {
     const active = document.activeElement;
-    if (active === tierSelect || active === volumeSlider) return;
+    if (active === tierSelect) return;
 
     if (event.key === ' ' || event.key === 'Enter') {
       event.preventDefault();
@@ -623,7 +563,6 @@
   buildTierOptions();
   renderTierSelect();
   renderAccuracy();
-  renderStreak();
   renderConfusions();
 </script>
 </body>
