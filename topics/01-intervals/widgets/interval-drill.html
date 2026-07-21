@@ -258,12 +258,10 @@
 
   const TONIC_MIDI = 60; // C4 — centro tonal fixo para esta fatia (D-09: menor implementação viável)
   const TIER_KEY = 'intervals-tier';
-  // Feature pedida pelo usuário (rodada de polish geral): registrar confusões
-  // recorrentes ("2ª menor" costuma ser confundida com "3ª menor" etc.) pra
-  // virarem candidatas a card manual em review/box-1-ainda-nao-sei/. Persistido
-  // (ao contrário da % de sessão) porque o valor dele é justamente acumular
-  // padrão entre sessões — mapa "correto>chutado" -> contagem.
-  const CONFUSION_KEY = 'intervals-confusions';
+  // Registra confusões recorrentes ("2ª menor" confundida com "3ª menor" etc.) —
+  // mapa "correto>chutado" -> contagem. Vive só em memória e reseta a cada
+  // carregamento de página (pedido do usuário: mesma janela do Score, que também
+  // é por sessão — antes acumulava entre sessões e o total histórico parecia errado).
   const CONFUSIONS_SHOWN = 5;
 
   const INTERVAL_NAMES = {
@@ -294,29 +292,13 @@
     return 1.0;
   }
 
-  function loadConfusions() {
-    try {
-      const raw = localStorage.getItem(CONFUSION_KEY);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-
-  function saveConfusions(map) {
-    localStorage.setItem(CONFUSION_KEY, JSON.stringify(map));
-  }
-
   function recordConfusion(correctSemitones, guessedSemitones) {
     const key = `${correctSemitones}>${guessedSemitones}`;
     confusions[key] = (confusions[key] || 0) + 1;
-    saveConfusions(confusions);
   }
 
   let tierState = loadTierState();
-  let confusions = loadConfusions();
+  let confusions = {}; // por sessão — reseta a cada carregamento de página
   let roundOpen = false; // fonte única de verdade pra atalhos de teclado — independe do que está visível na tela
   let currentSemitones = null;
   // Score da sessão (fração acertos/tentativas). Vive só em memória — reseta a
@@ -376,7 +358,6 @@
 
   clearConfusionsBtn.addEventListener('click', () => {
     confusions = {};
-    saveConfusions(confusions);
     renderConfusions();
   });
 
