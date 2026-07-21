@@ -41,7 +41,8 @@
     [7, 5], // tier 0: 5ª justa, 4ª justa
     [7, 5, 4, 3], // tier 1: + 3ª maior, 3ª menor
     [7, 5, 4, 3, 2, 1], // tier 2: + 2ª maior, 2ª menor
-    [7, 5, 4, 3, 2, 1, 6, 8, 9, 10, 11, 12], // tier 3: todos os semitons até a oitava
+    [7, 5, 4, 3, 2, 1, 6, 8, 9], // tier 3: + trítono, 6ª menor, 6ª maior (9 intervalos)
+    [7, 5, 4, 3, 2, 1, 6, 8, 9, 10, 11, 12], // tier 4: todos os semitons até a oitava
   ];
 
   /**
