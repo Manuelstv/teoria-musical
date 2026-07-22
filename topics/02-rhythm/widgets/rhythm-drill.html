@@ -39,7 +39,7 @@
   p.body-text { font-size: 16px; line-height: 1.5; margin: 0 0 16px; }
   .label { font-size: 14px; color: var(--text-muted); margin: 8px 0; }
   .display { font-size: 28px; font-weight: 600; line-height: 1.15; margin: 8px 0 16px; }
-  button {
+  button, select {
     min-height: 44px;
     min-width: 44px;
     font-family: inherit;
@@ -51,7 +51,7 @@
     cursor: pointer;
     padding: 8px 16px;
   }
-  button:disabled { cursor: not-allowed; opacity: 0.6; }
+  button:disabled, select:disabled { cursor: not-allowed; opacity: 0.6; }
   .btn-primary {
     background: var(--accent);
     color: white;
@@ -65,6 +65,11 @@
   .error { color: var(--red); font-size: 14px; margin-top: 8px; }
   .feedback-correct { color: var(--green); }
   .feedback-incorrect { color: var(--red); }
+
+  /* Seletor de dificuldade — ocupa a linha inteira; empilha sozinho se estreitar. */
+  .settings-row { display: flex; flex-wrap: wrap; gap: 16px; margin: 8px 0 16px; }
+  .settings-col { flex: 1 1 100%; }
+  .settings-col select { width: 100%; }
 
   /* Grade 2x2 de alternativas — cada cartão é um botão com a letra + a partitura. */
   .options-grid {
@@ -120,13 +125,20 @@
 <body>
   <div class="modal-overlay hidden" id="tutorial-modal">
     <div class="modal-box">
-      <p>Clica em "Tocar ritmo": você ouve 4 batidas de contagem (o pulso) e depois um ritmo de um compasso em 4/4. Escolha qual das quatro partituras (A, B, C, D) corresponde ao ritmo que tocou. Dá pra repetir quantas vezes quiser.</p>
+      <p>Clica em "Tocar ritmo" pra ouvir um ritmo de um compasso em 4/4. Escolha qual das quatro partituras (A, B, C, D) corresponde ao ritmo que tocou. Dá pra repetir quantas vezes quiser, e ajustar o nível de dificuldade no seletor.</p>
       <button class="btn-primary" id="tutorial-close-btn" style="margin:0;">Bora lá</button>
     </div>
   </div>
   <main class="panel">
     <h1>Ditado Rítmico</h1>
     <p class="body-text" id="instruction">Ouça o ritmo (só a duração das batidas importa — não a altura) e escolha qual partitura corresponde. A resposta certa aparece na hora.</p>
+
+    <div class="settings-row">
+      <div class="settings-col">
+        <label class="label" for="tier-select" style="display:block;">Dificuldade</label>
+        <select id="tier-select"></select>
+      </div>
+    </div>
 
     <button class="btn-primary" id="play-btn">Tocar ritmo</button>
     <button class="btn-secondary hidden" id="repeat-btn">Repetir</button>
@@ -188,25 +200,11 @@
     osc.stop(startTime + 0.26);
   }
 
-  // Clique de metrônomo (count-in): agudo e curto, acento no tempo 1.
-  function playMetronome(ctx, startTime, accent) {
-    const osc = ctx.createOscillator();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(accent ? 2000 : 1400, startTime);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(accent ? 0.16 : 0.09, startTime);
-    g.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.03);
-    osc.connect(g).connect(ctx.destination);
-    osc.start(startTime);
-    osc.stop(startTime + 0.04);
-  }
-
-  // Toca 4 cliques de contagem + o padrão. Onsets em segundos a partir de agora.
+  // Toca só o padrão (sem count-in — pedido do usuário). Onsets em segundos a
+  // partir de agora + uma pequena folga pra não cortar o ataque da 1ª batida.
   function playRhythm(pattern) {
     const ctx = resumeAudio();
-    const t0 = ctx.currentTime + 0.2;
-    for (let i = 0; i < 4; i++) playMetronome(ctx, t0 + i * SECONDS_PER_BEAT, i === 0);
-    const patStart = t0 + 4 * SECONDS_PER_BEAT;
+    const patStart = ctx.currentTime + 0.2;
     let cum = 0;
     for (const ev of pattern) {
       if (!ev.rest) playKick(ctx, patStart + cum * SECONDS_PER_BEAT);
@@ -216,29 +214,55 @@
 
   // ---------- Modelo de ritmo ----------
   // Cada padrão = 1 compasso de 4/4 (soma = 4 tempos). Durações em tempos:
-  // mínima=2, semínima=1, colcheia=0.5. Colcheias sempre em pares adjacentes
-  // (viram barra de ligação na notação — evita desenhar bandeirola solta).
+  // mínima=2, semínima=1, colcheia=0.5.
   const n = (d) => ({ d, rest: false }); // nota
   const r = (d) => ({ d, rest: true });  // pausa
   const q = 1, h = 2, e = 0.5;
 
-  const POOL = [
-    [n(q), n(q), n(q), n(q)],
-    [n(h), n(q), n(q)],
-    [n(q), n(q), n(h)],
-    [n(h), n(h)],
-    [n(e), n(e), n(q), n(q), n(q)],
-    [n(q), n(e), n(e), n(q), n(q)],
-    [n(q), n(q), n(e), n(e), n(q)],
-    [n(q), n(q), n(q), n(e), n(e)],
-    [n(e), n(e), n(e), n(e), n(q), n(q)],
-    [n(q), n(e), n(e), n(e), n(e), n(q)],
-    [r(q), n(q), n(q), n(q)],
-    [n(q), r(q), n(q), n(q)],
-    [n(q), n(q), r(q), n(q)],
-    [n(h), n(q), r(q)],
-    [n(e), n(e), n(q), r(q), n(q)],
-    [n(q), n(q), n(q), r(q)],
+  // Níveis de dificuldade (pedido do usuário). Cada nível tem >= 4 padrões
+  // distintos (a rodada sorteia 4). Complexidade crescente:
+  //  1 Fácil   — só semínimas e mínimas
+  //  2 Médio   — + colcheias (em par, com barra) e pausa de semínima
+  //  3 Difícil — + síncopes: colcheias soltas (bandeirola) e pausa de colcheia
+  const TIERS = [
+    {
+      name: 'Fácil (semínima e mínima)',
+      patterns: [
+        [n(q), n(q), n(q), n(q)],
+        [n(h), n(q), n(q)],
+        [n(q), n(q), n(h)],
+        [n(h), n(h)],
+        [n(q), n(h), n(q)],
+      ],
+    },
+    {
+      name: 'Médio (colcheias e pausas)',
+      patterns: [
+        [n(e), n(e), n(q), n(q), n(q)],
+        [n(q), n(e), n(e), n(q), n(q)],
+        [n(q), n(q), n(e), n(e), n(q)],
+        [n(q), n(q), n(q), n(e), n(e)],
+        [n(e), n(e), n(e), n(e), n(q), n(q)],
+        [r(q), n(q), n(q), n(q)],
+        [n(q), r(q), n(q), n(q)],
+        [n(q), n(q), r(q), n(q)],
+        [n(h), n(q), r(q)],
+        [n(e), n(e), n(q), r(q), n(q)],
+      ],
+    },
+    {
+      name: 'Difícil (síncopes)',
+      patterns: [
+        [n(e), n(e), n(e), n(e), n(e), n(e), n(q)],
+        [n(q), n(e), n(e), n(e), n(e), n(e), n(e)],
+        [n(e), n(e), r(q), n(e), n(e), n(q)],
+        [n(e), r(e), n(e), n(e), n(q), n(q)],
+        [n(q), n(e), r(e), n(e), n(e), n(q)],
+        [n(e), n(e), n(e), n(e), n(q), r(q)],
+        [r(e), n(e), n(e), n(e), n(q), n(q)],
+        [n(q), n(q), n(e), r(e), n(e), n(e)],
+      ],
+    },
   ];
 
   function shuffle(arr) {
@@ -252,13 +276,15 @@
 
   // ---------- Renderizador SVG de ritmo (hand-rolled) ----------
   // Uma linha de percussão, hastes pra cima. Semínima = cabeça cheia; mínima =
-  // cabeça vazada; colcheia = cabeça cheia + barra de ligação ligando o grupo.
+  // cabeça vazada; colcheia = cabeça cheia + barra de ligação (colcheias no mesmo
+  // tempo) ou bandeirola (colcheia sozinha no tempo). Pausas: semínima e colcheia.
   function renderRhythm(pattern) {
     const W = 300, H = 76, lineY = 46, leftM = 46, rightM = 16;
     const usable = W - leftM - rightM;
     const beatW = usable / 4;
     const headRx = 6.2, headRy = 4.6, stemTop = 16;
     const NOTE = '#E6E6E6', STAFF = '#94A3B8';
+    const stemXof = headRx - 0.6;
     const parts = [];
 
     // linha da pauta + fórmula de compasso 4/4 + barras
@@ -270,16 +296,16 @@
 
     let cum = 0;
     const items = pattern.map((ev) => {
+      const start = cum;
       const x = leftM + cum * beatW + 12;
       cum += ev.d;
-      return { ev, x };
+      return { ev, x, start };
     });
 
-    const stemXof = headRx - 0.6;
-
+    // cabeças de nota, hastes e pausas
     items.forEach(({ ev, x }) => {
       if (ev.rest) {
-        parts.push(quarterRest(x, lineY, NOTE));
+        parts.push(ev.d >= 1 ? quarterRest(x, lineY, NOTE) : eighthRest(x, lineY, NOTE));
         return;
       }
       const hollow = ev.d >= 2;
@@ -288,18 +314,25 @@
       parts.push(`<line x1="${sx}" y1="${lineY - 1}" x2="${sx}" y2="${stemTop}" stroke="${NOTE}" stroke-width="1.6"/>`);
     });
 
-    // barras de ligação: grupos de colcheias adjacentes (d === 0.5)
+    // barras de ligação: liga colcheias adjacentes DO MESMO TEMPO (mesmo floor do
+    // início); colcheia sozinha no tempo recebe bandeirola (notação correta p/ síncope).
     let i = 0;
     while (i < items.length) {
-      if (!items[i].ev.rest && items[i].ev.d === 0.5) {
+      const it = items[i];
+      if (!it.ev.rest && it.ev.d === 0.5) {
         let j = i;
-        while (j + 1 < items.length && !items[j + 1].ev.rest && items[j + 1].ev.d === 0.5) j++;
-        const x1 = items[i].x + stemXof, x2 = items[j].x + stemXof;
+        while (
+          j + 1 < items.length &&
+          !items[j + 1].ev.rest &&
+          items[j + 1].ev.d === 0.5 &&
+          Math.floor(items[j + 1].start) === Math.floor(it.start)
+        ) j++;
         if (j > i) {
+          const x1 = items[i].x + stemXof, x2 = items[j].x + stemXof;
           parts.push(`<line x1="${x1}" y1="${stemTop}" x2="${x2}" y2="${stemTop}" stroke="${NOTE}" stroke-width="4"/>`);
         } else {
-          // colcheia solta (não ocorre no pool atual): bandeirola simples
-          parts.push(`<path d="M ${x1} ${stemTop} q 7 3 5 12" fill="none" stroke="${NOTE}" stroke-width="2"/>`);
+          const sx = items[i].x + stemXof;
+          parts.push(`<path d="M ${sx} ${stemTop} c 6 2 9 7 4 14" fill="none" stroke="${NOTE}" stroke-width="2"/>`);
         }
         i = j + 1;
       } else {
@@ -320,7 +353,16 @@
     );
   }
 
+  // Pausa de colcheia: bolinha em cima + haste oblíqua (glifo padrão aproximado).
+  function eighthRest(x, cy, color) {
+    return (
+      `<circle cx="${x - 2}" cy="${cy - 6}" r="2.4" fill="${color}"/>` +
+      `<line x1="${x + 0.5}" y1="${cy - 7}" x2="${x - 4}" y2="${cy + 8}" stroke="${color}" stroke-width="2" stroke-linecap="round"/>`
+    );
+  }
+
   // ---------- Estado + fluxo da rodada ----------
+  const TIER_KEY = 'rhythm-tier';
   let roundOpen = false;
   let currentOptions = [];   // 4 padrões
   let correctIndex = -1;     // índice do tocado dentro de currentOptions
@@ -328,12 +370,41 @@
 
   const playBtn = document.getElementById('play-btn');
   const repeatBtn = document.getElementById('repeat-btn');
+  const tierSelect = document.getElementById('tier-select');
   const audioError = document.getElementById('audio-error');
   const optionsStep = document.getElementById('options-step');
   const optionsGrid = document.getElementById('options-grid');
   const feedbackStep = document.getElementById('feedback-step');
   const feedbackDisplay = document.getElementById('feedback-display');
   const scoreDisplay = document.getElementById('score-display');
+
+  function loadTierIndex() {
+    try {
+      const raw = localStorage.getItem(TIER_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      const idx = parsed && Number.isInteger(parsed.tierIndex) ? parsed.tierIndex : 0;
+      return Math.min(Math.max(idx, 0), TIERS.length - 1);
+    } catch {
+      return 0;
+    }
+  }
+  let tierIndex = loadTierIndex();
+
+  function buildTierOptions() {
+    tierSelect.innerHTML = '';
+    TIERS.forEach((t, i) => {
+      const o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = `Nível ${i + 1} — ${t.name}`;
+      tierSelect.appendChild(o);
+    });
+    tierSelect.value = String(tierIndex);
+  }
+
+  tierSelect.addEventListener('change', () => {
+    tierIndex = Number(tierSelect.value);
+    localStorage.setItem(TIER_KEY, JSON.stringify({ tierIndex }));
+  });
 
   function renderScore() {
     scoreDisplay.textContent = `${score.correct}/${score.attempts}`;
@@ -358,7 +429,7 @@
       audioError.classList.add('hidden');
       feedbackStep.classList.add('hidden');
 
-      currentOptions = shuffle(POOL).slice(0, 4);
+      currentOptions = shuffle(TIERS[tierIndex].patterns).slice(0, 4);
       correctIndex = Math.floor(Math.random() * 4);
       buildOptionCards();
       optionsStep.classList.remove('hidden');
@@ -369,6 +440,7 @@
       playBtn.classList.add('hidden');       // some enquanto aguarda resposta
       repeatBtn.classList.remove('hidden');  // repetir fica disponível
       repeatBtn.disabled = false;
+      tierSelect.disabled = true;            // não troca de nível no meio da rodada
     } catch (err) {
       audioError.classList.remove('hidden');
     }
@@ -398,6 +470,7 @@
 
     playBtn.textContent = 'Próximo ritmo';
     playBtn.classList.remove('hidden');
+    tierSelect.disabled = false;
   }
 
   playBtn.addEventListener('click', startNewRound);
@@ -409,6 +482,8 @@
 
   // Atalhos: espaço = tocar/próximo; R = repetir; A-D ou 1-4 escolhem.
   document.addEventListener('keydown', (event) => {
+    if (document.activeElement === tierSelect) return; // não dispara no seletor nativo
+
     if (event.key === ' ' || event.key === 'Enter') {
       event.preventDefault();
       if (!playBtn.classList.contains('hidden') && !playBtn.disabled) playBtn.click();
@@ -430,6 +505,7 @@
     }
   });
 
+  buildTierOptions();
   renderScore();
 </script>
 </body>
