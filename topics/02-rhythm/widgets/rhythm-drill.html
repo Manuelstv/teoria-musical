@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ditado Rítmico — Treino Auditivo</title>
+<style>
+  :root {
+    --bg: #0F1115;
+    --panel: #1B1E26;
+    --panel-alt: #232734;
+    --border: #2B2F3A;
+    --text: #E6E6E6;
+    --text-muted: #94A3B8;
+    --text-faint: #64748B;
+    --accent: #3B82F6;
+    --green: #4ADE80;
+    --red: #F87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 560px;
+    width: 100%;
+  }
+  h1 { font-size: 20px; font-weight: 600; line-height: 1.2; margin: 0 0 16px; }
+  p.body-text { font-size: 16px; line-height: 1.5; margin: 0 0 16px; }
+  .label { font-size: 14px; color: var(--text-muted); margin: 8px 0; }
+  .display { font-size: 28px; font-weight: 600; line-height: 1.15; margin: 8px 0 16px; }
+  button {
+    min-height: 44px;
+    min-width: 44px;
+    font-family: inherit;
+    font-size: 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel-alt);
+    color: var(--text);
+    cursor: pointer;
+    padding: 8px 16px;
+  }
+  button:disabled { cursor: not-allowed; opacity: 0.6; }
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+    width: 100%;
+    margin: 24px 0 8px;
+    font-weight: 600;
+  }
+  .btn-secondary { background: var(--panel-alt); color: var(--text); width: 100%; margin: 8px 0; }
+  .hidden { display: none; }
+  .error { color: var(--red); font-size: 14px; margin-top: 8px; }
+  .feedback-correct { color: var(--green); }
+  .feedback-incorrect { color: var(--red); }
+
+  /* Grade 2x2 de alternativas — cada cartão é um botão com a letra + a partitura. */
+  .options-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .option-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    text-align: left;
+    width: 100%;
+  }
+  .option-letter {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-muted);
+    min-width: 18px;
+  }
+  .option-card svg { flex: 1; height: auto; display: block; }
+  .option-card:disabled { opacity: 1; }
+  .card-correct { border-color: var(--green); background: rgba(74, 222, 128, 0.15); }
+  .card-incorrect { border-color: var(--red); background: rgba(248, 113, 113, 0.15); }
+
+  .feedback-step {
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+  }
+  .feedback-step-correct { background: rgba(74, 222, 128, 0.12); border-color: var(--green); }
+  .feedback-step-incorrect { background: rgba(248, 113, 113, 0.12); border-color: var(--red); }
+
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px; z-index: 10;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px; max-width: 420px;
+  }
+  .modal-box p { font-size: 15px; line-height: 1.5; margin: 0 0 16px; }
+</style>
+</head>
+<body>
+  <div class="modal-overlay hidden" id="tutorial-modal">
+    <div class="modal-box">
+      <p>Clica em "Tocar ritmo": você ouve 4 batidas de contagem (o pulso) e depois um ritmo de um compasso em 4/4. Escolha qual das quatro partituras (A, B, C, D) corresponde ao ritmo que tocou. Dá pra repetir quantas vezes quiser.</p>
+      <button class="btn-primary" id="tutorial-close-btn" style="margin:0;">Bora lá</button>
+    </div>
+  </div>
+  <main class="panel">
+    <h1>Ditado Rítmico</h1>
+    <p class="body-text" id="instruction">Ouça o ritmo (só a duração das batidas importa — não a altura) e escolha qual partitura corresponde. A resposta certa aparece na hora.</p>
+
+    <button class="btn-primary" id="play-btn">Tocar ritmo</button>
+    <button class="btn-secondary hidden" id="repeat-btn">Repetir</button>
+    <p class="error hidden" id="audio-error">Não consegui tocar o som agora. Clique em 'Tocar ritmo' de novo para ativar o áudio do navegador.</p>
+
+    <div id="options-step" class="hidden">
+      <p class="label">Qual partitura corresponde ao ritmo?</p>
+      <div class="options-grid" id="options-grid"></div>
+    </div>
+
+    <div id="feedback-step" class="feedback-step hidden">
+      <p class="display" id="feedback-display"></p>
+    </div>
+
+    <div style="margin-top:24px; border-top:1px solid var(--border); padding-top:16px;">
+      <p class="label">Score</p>
+      <p class="display" id="score-display">0/0</p>
+    </div>
+  </main>
+
+<script>
+  // Widget self-contained (padrão "1 widget = 1 arquivo"): áudio de percussão
+  // sintetizado inline via Web Audio, sem depender do soundfont/piano de
+  // ear-trainer.js. Ritmo puro → toda batida é a mesma "kick", sem altura.
+
+  document.getElementById('tutorial-modal').classList.remove('hidden');
+  document.getElementById('tutorial-close-btn').addEventListener('click', () => {
+    document.getElementById('tutorial-modal').classList.add('hidden');
+  });
+
+  // ---------- Áudio ----------
+  let audioCtx = null;
+  function getCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+  }
+  function resumeAudio() {
+    const ctx = getCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  const BPM = 84;
+  const SECONDS_PER_BEAT = 60 / BPM;
+
+  // Batida de percussão: seno com queda rápida de altura (kick sintético). Mesma
+  // batida em todo onset → o exercício isola o ritmo, sem informação melódica.
+  function playKick(ctx, startTime) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(165, startTime);
+    osc.frequency.exponentialRampToValueAtTime(52, startTime + 0.14);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, startTime);
+    g.gain.exponentialRampToValueAtTime(1.0, startTime + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.24);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + 0.26);
+  }
+
+  // Clique de metrônomo (count-in): agudo e curto, acento no tempo 1.
+  function playMetronome(ctx, startTime, accent) {
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(accent ? 2000 : 1400, startTime);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(accent ? 0.16 : 0.09, startTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.03);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + 0.04);
+  }
+
+  // Toca 4 cliques de contagem + o padrão. Onsets em segundos a partir de agora.
+  function playRhythm(pattern) {
+    const ctx = resumeAudio();
+    const t0 = ctx.currentTime + 0.2;
+    for (let i = 0; i < 4; i++) playMetronome(ctx, t0 + i * SECONDS_PER_BEAT, i === 0);
+    const patStart = t0 + 4 * SECONDS_PER_BEAT;
+    let cum = 0;
+    for (const ev of pattern) {
+      if (!ev.rest) playKick(ctx, patStart + cum * SECONDS_PER_BEAT);
+      cum += ev.d;
+    }
+  }
+
+  // ---------- Modelo de ritmo ----------
+  // Cada padrão = 1 compasso de 4/4 (soma = 4 tempos). Durações em tempos:
+  // mínima=2, semínima=1, colcheia=0.5. Colcheias sempre em pares adjacentes
+  // (viram barra de ligação na notação — evita desenhar bandeirola solta).
+  const n = (d) => ({ d, rest: false }); // nota
+  const r = (d) => ({ d, rest: true });  // pausa
+  const q = 1, h = 2, e = 0.5;
+
+  const POOL = [
+    [n(q), n(q), n(q), n(q)],
+    [n(h), n(q), n(q)],
+    [n(q), n(q), n(h)],
+    [n(h), n(h)],
+    [n(e), n(e), n(q), n(q), n(q)],
+    [n(q), n(e), n(e), n(q), n(q)],
+    [n(q), n(q), n(e), n(e), n(q)],
+    [n(q), n(q), n(q), n(e), n(e)],
+    [n(e), n(e), n(e), n(e), n(q), n(q)],
+    [n(q), n(e), n(e), n(e), n(e), n(q)],
+    [r(q), n(q), n(q), n(q)],
+    [n(q), r(q), n(q), n(q)],
+    [n(q), n(q), r(q), n(q)],
+    [n(h), n(q), r(q)],
+    [n(e), n(e), n(q), r(q), n(q)],
+    [n(q), n(q), n(q), r(q)],
+  ];
+
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // ---------- Renderizador SVG de ritmo (hand-rolled) ----------
+  // Uma linha de percussão, hastes pra cima. Semínima = cabeça cheia; mínima =
+  // cabeça vazada; colcheia = cabeça cheia + barra de ligação ligando o grupo.
+  function renderRhythm(pattern) {
+    const W = 300, H = 76, lineY = 46, leftM = 46, rightM = 16;
+    const usable = W - leftM - rightM;
+    const beatW = usable / 4;
+    const headRx = 6.2, headRy = 4.6, stemTop = 16;
+    const NOTE = '#E6E6E6', STAFF = '#94A3B8';
+    const parts = [];
+
+    // linha da pauta + fórmula de compasso 4/4 + barras
+    parts.push(`<line x1="${leftM - 10}" y1="${lineY}" x2="${W - rightM}" y2="${lineY}" stroke="${STAFF}" stroke-width="1.3"/>`);
+    parts.push(`<text x="24" y="${lineY - 2}" font-size="17" font-weight="700" fill="${NOTE}" text-anchor="middle">4</text>`);
+    parts.push(`<text x="24" y="${lineY + 14}" font-size="17" font-weight="700" fill="${NOTE}" text-anchor="middle">4</text>`);
+    parts.push(`<line x1="${leftM - 10}" y1="${lineY - 15}" x2="${leftM - 10}" y2="${lineY + 15}" stroke="${STAFF}" stroke-width="1.3"/>`);
+    parts.push(`<line x1="${W - rightM}" y1="${lineY - 15}" x2="${W - rightM}" y2="${lineY + 15}" stroke="${STAFF}" stroke-width="2.4"/>`);
+
+    let cum = 0;
+    const items = pattern.map((ev) => {
+      const x = leftM + cum * beatW + 12;
+      cum += ev.d;
+      return { ev, x };
+    });
+
+    const stemXof = headRx - 0.6;
+
+    items.forEach(({ ev, x }) => {
+      if (ev.rest) {
+        parts.push(quarterRest(x, lineY, NOTE));
+        return;
+      }
+      const hollow = ev.d >= 2;
+      parts.push(`<ellipse cx="${x}" cy="${lineY}" rx="${headRx}" ry="${headRy}" transform="rotate(-16 ${x} ${lineY})" fill="${hollow ? 'none' : NOTE}" stroke="${NOTE}" stroke-width="${hollow ? 1.8 : 0}"/>`);
+      const sx = x + stemXof;
+      parts.push(`<line x1="${sx}" y1="${lineY - 1}" x2="${sx}" y2="${stemTop}" stroke="${NOTE}" stroke-width="1.6"/>`);
+    });
+
+    // barras de ligação: grupos de colcheias adjacentes (d === 0.5)
+    let i = 0;
+    while (i < items.length) {
+      if (!items[i].ev.rest && items[i].ev.d === 0.5) {
+        let j = i;
+        while (j + 1 < items.length && !items[j + 1].ev.rest && items[j + 1].ev.d === 0.5) j++;
+        const x1 = items[i].x + stemXof, x2 = items[j].x + stemXof;
+        if (j > i) {
+          parts.push(`<line x1="${x1}" y1="${stemTop}" x2="${x2}" y2="${stemTop}" stroke="${NOTE}" stroke-width="4"/>`);
+        } else {
+          // colcheia solta (não ocorre no pool atual): bandeirola simples
+          parts.push(`<path d="M ${x1} ${stemTop} q 7 3 5 12" fill="none" stroke="${NOTE}" stroke-width="2"/>`);
+        }
+        i = j + 1;
+      } else {
+        i++;
+      }
+    }
+
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img">${parts.join('')}</svg>`;
+  }
+
+  // Pausa de semínima: zigue-zague vertical + gancho embaixo (glifo padrão aproximado).
+  function quarterRest(x, cy, color) {
+    const top = cy - 14;
+    return (
+      `<polyline points="${x - 4},${top} ${x + 3},${top + 7} ${x - 3},${top + 14} ${x + 4},${top + 21}" ` +
+      `fill="none" stroke="${color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>` +
+      `<path d="M ${x + 4} ${top + 21} q -7 -1 -2 8 q -5 -4 -4 -9" fill="${color}"/>`
+    );
+  }
+
+  // ---------- Estado + fluxo da rodada ----------
+  let roundOpen = false;
+  let currentOptions = [];   // 4 padrões
+  let correctIndex = -1;     // índice do tocado dentro de currentOptions
+  let score = { correct: 0, attempts: 0 };
+
+  const playBtn = document.getElementById('play-btn');
+  const repeatBtn = document.getElementById('repeat-btn');
+  const audioError = document.getElementById('audio-error');
+  const optionsStep = document.getElementById('options-step');
+  const optionsGrid = document.getElementById('options-grid');
+  const feedbackStep = document.getElementById('feedback-step');
+  const feedbackDisplay = document.getElementById('feedback-display');
+  const scoreDisplay = document.getElementById('score-display');
+
+  function renderScore() {
+    scoreDisplay.textContent = `${score.correct}/${score.attempts}`;
+  }
+
+  function buildOptionCards() {
+    optionsGrid.innerHTML = '';
+    const letters = ['A', 'B', 'C', 'D'];
+    currentOptions.forEach((pattern, index) => {
+      const btn = document.createElement('button');
+      btn.className = 'option-card';
+      btn.dataset.index = String(index);
+      btn.innerHTML = `<span class="option-letter">${letters[index]}</span>${renderRhythm(pattern)}`;
+      btn.addEventListener('click', () => handleAnswer(index));
+      optionsGrid.appendChild(btn);
+    });
+  }
+
+  function startNewRound() {
+    try {
+      resumeAudio();
+      audioError.classList.add('hidden');
+      feedbackStep.classList.add('hidden');
+
+      currentOptions = shuffle(POOL).slice(0, 4);
+      correctIndex = Math.floor(Math.random() * 4);
+      buildOptionCards();
+      optionsStep.classList.remove('hidden');
+
+      playRhythm(currentOptions[correctIndex]);
+
+      roundOpen = true;
+      playBtn.classList.add('hidden');       // some enquanto aguarda resposta
+      repeatBtn.classList.remove('hidden');  // repetir fica disponível
+      repeatBtn.disabled = false;
+    } catch (err) {
+      audioError.classList.remove('hidden');
+    }
+  }
+
+  function handleAnswer(index) {
+    if (!roundOpen) return;
+    roundOpen = false;
+
+    const correct = index === correctIndex;
+    score.attempts += 1;
+    if (correct) score.correct += 1;
+    renderScore();
+
+    feedbackDisplay.textContent = correct ? 'Certo!' : 'Errado — a resposta certa está destacada';
+    feedbackDisplay.className = correct ? 'display feedback-correct' : 'display feedback-incorrect';
+    feedbackStep.classList.remove('feedback-step-correct', 'feedback-step-incorrect');
+    feedbackStep.classList.add(correct ? 'feedback-step-correct' : 'feedback-step-incorrect');
+    feedbackStep.classList.remove('hidden');
+
+    optionsGrid.querySelectorAll('button').forEach((btn) => {
+      const idx = Number(btn.dataset.index);
+      btn.disabled = true;
+      if (idx === correctIndex) btn.classList.add('card-correct');
+      else if (!correct && idx === index) btn.classList.add('card-incorrect');
+    });
+
+    playBtn.textContent = 'Próximo ritmo';
+    playBtn.classList.remove('hidden');
+  }
+
+  playBtn.addEventListener('click', startNewRound);
+  repeatBtn.addEventListener('click', () => {
+    if (correctIndex < 0) return;
+    resumeAudio();
+    playRhythm(currentOptions[correctIndex]);
+  });
+
+  // Atalhos: espaço = tocar/próximo; R = repetir; A-D ou 1-4 escolhem.
+  document.addEventListener('keydown', (event) => {
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      if (!playBtn.classList.contains('hidden') && !playBtn.disabled) playBtn.click();
+      return;
+    }
+    if ((event.key === 'r' || event.key === 'R') && !repeatBtn.classList.contains('hidden')) {
+      repeatBtn.click();
+      return;
+    }
+    if (roundOpen) {
+      let idx = -1;
+      const k = event.key.toLowerCase();
+      if (['a', 'b', 'c', 'd'].includes(k)) idx = ['a', 'b', 'c', 'd'].indexOf(k);
+      else if (['1', '2', '3', '4'].includes(event.key)) idx = Number(event.key) - 1;
+      if (idx >= 0) {
+        const target = optionsGrid.querySelector(`button[data-index="${idx}"]`);
+        if (target && !target.disabled) target.click();
+      }
+    }
+  });
+
+  renderScore();
+</script>
+</body>
+</html>

@@ -2,10 +2,58 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="0; url=topics/01-intervals/widgets/interval-drill.html">
-<title>Estudo de intervalos</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Treino Auditivo — Teoria Musical</title>
+<style>
+  :root {
+    --bg: #0F1115;
+    --panel: #1B1E26;
+    --panel-alt: #232734;
+    --border: #2B2F3A;
+    --text: #E6E6E6;
+    --text-muted: #94A3B8;
+    --accent: #3B82F6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+  }
+  main { max-width: 480px; width: 100%; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 8px; }
+  p.sub { color: var(--text-muted); font-size: 15px; margin: 0 0 24px; }
+  a.card {
+    display: block;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 12px;
+    text-decoration: none;
+    color: var(--text);
+  }
+  a.card:hover { border-color: var(--accent); }
+  a.card h2 { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+  a.card span { color: var(--text-muted); font-size: 14px; }
+</style>
 </head>
 <body>
-  <p>Redirecionando... <a href="topics/01-intervals/widgets/interval-drill.html">clique aqui</a> se não for automático.</p>
+  <main>
+    <h1>Treino Auditivo</h1>
+    <p class="sub">Exercícios de percepção — escolha um treino.</p>
+    <a class="card" href="topics/01-intervals/widgets/interval-drill.html">
+      <h2>Reconhecimento de Intervalo</h2>
+      <span>Ouça duas notas e identifique o intervalo.</span>
+    </a>
+    <a class="card" href="topics/02-rhythm/widgets/rhythm-drill.html">
+      <h2>Ditado Rítmico</h2>
+      <span>Ouça um ritmo e escolha a partitura correspondente.</span>
+    </a>
+  </main>
 </body>
 </html>
