@@ -184,9 +184,34 @@
   const BPM = 84;
   const SECONDS_PER_BEAT = 60 / BPM;
 
-  // Batida de percussão: seno com queda rápida de altura (kick sintético). Mesma
-  // batida em todo onset → o exercício isola o ritmo, sem informação melódica.
+  // Bus master pra deixar mais alto sem estourar (pedido do usuário): limiter
+  // (compressor agressivo) segura os picos e o ganho de makeup depois dele
+  // levanta o volume percebido. Todas as batidas passam por aqui.
+  let masterNode = null;
+  function getMaster() {
+    if (!masterNode) {
+      const ctx = getCtx();
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -14;
+      comp.knee.value = 0;
+      comp.ratio.value = 20;
+      comp.attack.value = 0.002;
+      comp.release.value = 0.12;
+      const makeup = ctx.createGain();
+      makeup.gain.value = 2.2; // ganho de makeup pós-limiter → mais alto
+      comp.connect(makeup);
+      makeup.connect(ctx.destination);
+      masterNode = comp;
+    }
+    return masterNode;
+  }
+
+  // Batida de percussão: seno com queda rápida de altura (kick sintético) + um
+  // clique curto de ataque (mais presença/volume). Mesma batida em todo onset →
+  // o exercício isola o ritmo, sem informação melódica.
   function playKick(ctx, startTime) {
+    const out = getMaster();
+
     const osc = ctx.createOscillator();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(165, startTime);
@@ -195,9 +220,19 @@
     g.gain.setValueAtTime(0.0001, startTime);
     g.gain.exponentialRampToValueAtTime(1.0, startTime + 0.005);
     g.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.24);
-    osc.connect(g).connect(ctx.destination);
+    osc.connect(g).connect(out);
     osc.start(startTime);
     osc.stop(startTime + 0.26);
+
+    const click = ctx.createOscillator();
+    click.type = 'triangle';
+    click.frequency.setValueAtTime(1300, startTime);
+    const cg = ctx.createGain();
+    cg.gain.setValueAtTime(0.6, startTime);
+    cg.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.02);
+    click.connect(cg).connect(out);
+    click.start(startTime);
+    click.stop(startTime + 0.03);
   }
 
   // Toca só o padrão (sem count-in — pedido do usuário). Onsets em segundos a
@@ -217,13 +252,15 @@
   // mínima=2, semínima=1, colcheia=0.5.
   const n = (d) => ({ d, rest: false }); // nota
   const r = (d) => ({ d, rest: true });  // pausa
-  const q = 1, h = 2, e = 0.5;
+  const q = 1, h = 2, e = 0.5, s = 0.25;
 
   // Níveis de dificuldade (pedido do usuário). Cada nível tem >= 4 padrões
   // distintos (a rodada sorteia 4). Complexidade crescente:
   //  1 Fácil   — só semínimas e mínimas
   //  2 Médio   — + colcheias (em par, com barra) e pausa de semínima
   //  3 Difícil — + síncopes: colcheias soltas (bandeirola) e pausa de colcheia
+  //  4 Muito difícil — + semicolcheias (grupos de 4 com barra dupla)
+  //  5 Insano — semicolcheias densas + síncope misturadas
   const TIERS = [
     {
       name: 'Fácil (semínima e mínima)',
@@ -261,6 +298,32 @@
         [n(e), n(e), n(e), n(e), n(q), r(q)],
         [r(e), n(e), n(e), n(e), n(q), n(q)],
         [n(q), n(q), n(e), r(e), n(e), n(e)],
+      ],
+    },
+    {
+      name: 'Muito difícil (semicolcheias)',
+      patterns: [
+        [n(s), n(s), n(s), n(s), n(q), n(q), n(q)],
+        [n(q), n(s), n(s), n(s), n(s), n(q), n(q)],
+        [n(e), n(e), n(s), n(s), n(s), n(s), n(q), n(q)],
+        [n(e), n(s), n(s), n(q), n(q), n(q)],
+        [n(s), n(s), n(e), n(q), n(e), n(e), n(q)],
+        [n(q), n(e), n(s), n(s), n(s), n(s), n(e), n(q)],
+        [n(s), n(s), n(s), n(s), n(e), n(e), n(q), n(q)],
+        [n(q), n(q), n(s), n(s), n(s), n(s), n(e), n(e)],
+      ],
+    },
+    {
+      name: 'Insano (semicolcheias + síncope)',
+      patterns: [
+        [n(s), n(s), n(s), n(s), n(e), n(e), n(s), n(s), n(s), n(s), n(q)],
+        [n(e), n(e), n(s), n(s), n(s), n(s), n(e), n(e), n(e), n(e)],
+        [n(s), n(s), n(e), n(e), n(s), n(s), n(q), n(q)],
+        [n(q), n(s), n(s), n(s), n(s), n(e), n(s), n(s), n(q)],
+        [n(s), n(s), n(s), n(s), n(s), n(s), n(s), n(s), n(q), n(q)],
+        [n(e), n(s), n(s), n(s), n(s), n(e), n(e), n(e), n(q)],
+        [n(s), n(s), n(s), n(s), n(q), r(q), n(e), n(e)],
+        [n(e), n(e), n(e), n(s), n(s), n(s), n(s), n(e), n(q)],
       ],
     },
   ];
@@ -314,22 +377,44 @@
       parts.push(`<line x1="${sx}" y1="${lineY - 1}" x2="${sx}" y2="${stemTop}" stroke="${NOTE}" stroke-width="1.6"/>`);
     });
 
-    // barras de ligação: liga colcheias adjacentes DO MESMO TEMPO (mesmo floor do
-    // início); colcheia sozinha no tempo recebe bandeirola (notação correta p/ síncope).
+    // barras de ligação por tempo: liga colcheias/semicolcheias adjacentes DO
+    // MESMO TEMPO (mesmo floor do início). Barra primária cobre o grupo inteiro;
+    // barra secundária (mais baixa) cobre só as corridas de semicolcheia. Nota
+    // curta sozinha no tempo recebe bandeirola (notação correta p/ síncope).
+    const beamable = (it) => !it.ev.rest && it.ev.d <= 0.5;
+    const secY = stemTop + 5;
     let i = 0;
     while (i < items.length) {
-      const it = items[i];
-      if (!it.ev.rest && it.ev.d === 0.5) {
+      if (beamable(items[i])) {
         let j = i;
         while (
           j + 1 < items.length &&
-          !items[j + 1].ev.rest &&
-          items[j + 1].ev.d === 0.5 &&
-          Math.floor(items[j + 1].start) === Math.floor(it.start)
+          beamable(items[j + 1]) &&
+          Math.floor(items[j + 1].start) === Math.floor(items[i].start)
         ) j++;
         if (j > i) {
           const x1 = items[i].x + stemXof, x2 = items[j].x + stemXof;
           parts.push(`<line x1="${x1}" y1="${stemTop}" x2="${x2}" y2="${stemTop}" stroke="${NOTE}" stroke-width="4"/>`);
+          // barras secundárias sobre corridas de semicolcheia (d === 0.25)
+          let k = i;
+          while (k <= j) {
+            if (items[k].ev.d === 0.25) {
+              let m = k;
+              while (m + 1 <= j && items[m + 1].ev.d === 0.25) m++;
+              if (m > k) {
+                const s1 = items[k].x + stemXof, s2 = items[m].x + stemXof;
+                parts.push(`<line x1="${s1}" y1="${secY}" x2="${s2}" y2="${secY}" stroke="${NOTE}" stroke-width="3"/>`);
+              } else {
+                // semicolcheia isolada no grupo → stub curto pro lado do vizinho
+                const sx = items[k].x + stemXof;
+                const dir = k > i ? -1 : 1;
+                parts.push(`<line x1="${sx}" y1="${secY}" x2="${sx + dir * 7}" y2="${secY}" stroke="${NOTE}" stroke-width="3"/>`);
+              }
+              k = m + 1;
+            } else {
+              k++;
+            }
+          }
         } else {
           const sx = items[i].x + stemXof;
           parts.push(`<path d="M ${sx} ${stemTop} c 6 2 9 7 4 14" fill="none" stroke="${NOTE}" stroke-width="2"/>`);
